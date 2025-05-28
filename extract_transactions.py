@@ -199,4 +199,125 @@ if __name__ == "__main__":
                     print(df.head().to_string())
             
             # Continue with the rest of the fallback approaches
-            # ...existing code for the rest of the fallbacks...
+            import pdfplumber
+            
+            print("\nFalling back to pdfplumber with specialized extraction logic for your document format...")
+            
+            output_excel_path = f"{os.path.splitext(os.path.basename(pdf_path))[0]}_transactions.xlsx"
+            
+            with pdfplumber.open(pdf_path) as pdf:
+                # Store all transactions
+                all_transactions = []
+                
+                # Process each page
+                for page_num, page in enumerate(pdf.pages):
+                    print(f"Processing page {page_num+1}")
+                    tables = page.extract_tables()
+                    
+                    for table_idx, table in enumerate(tables):
+                        if not table or len(table) < 2:
+                            continue
+                        
+                        # Check if this is a transaction table by looking for header row
+                        header_row = table[0]
+                        if not header_row or 'Company' not in header_row or 'Date' not in header_row:
+                            continue
+                            
+                        print(f"Found transaction table {table_idx+1} on page {page_num+1}")
+                        
+                        # Create column mapping from header row
+                        columns = {}
+                        for i, col_name in enumerate(header_row):
+                            if col_name:  # Skip None values
+                                columns[col_name] = i
+                        
+                        # Process all rows in the table
+                        current_scrip = None
+                        for row_idx, row in enumerate(table):
+                            # Skip header row and CLIENT_ID row
+                            if row_idx < 2:
+                                continue
+                                
+                            # Check if this is a Scrip_Symbol row
+                            if row and row[0] == 'Scrip_Symbol :':
+                                if len(row) > 2 and row[2]:
+                                    current_scrip = row[2]
+                                continue
+                            
+                            # Process transaction row
+                            if row and 'Company' in columns and row[columns['Company']] == 'BSE_CASH':
+                                transaction = {}
+                                
+                                # Extract all available columns
+                                for col_name, col_idx in columns.items():
+                                    if col_idx < len(row):
+                                        transaction[col_name] = row[col_idx]
+                                    else:
+                                        transaction[col_name] = None
+                                
+                                # Add the scrip information
+                                transaction['Scrip_Symbol'] = current_scrip
+                                
+                                # Append to results
+                                all_transactions.append(transaction)
+                
+                # Convert to DataFrame
+                if all_transactions:
+                    df = pd.DataFrame(all_transactions)
+                    
+                    # Clean the data
+                    # Clean amount values - remove commas, convert to numeric
+                    numeric_cols = ['B.Qty', 'B.Rate', 'S.Qty', 'S.Rate', 'N.Qty', 'N.Rate', 'N.Amt']
+                    for col in numeric_cols:
+                        if col in df.columns:
+                            df[col] = df[col].astype(str)
+                            df[col] = df[col].str.replace(',', '')
+                            df[col] = df[col].apply(lambda x: re.sub(r'[^\d.-]', '', str(x)) if pd.notna(x) and str(x).strip() else '')
+                            df[col] = pd.to_numeric(df[col], errors='coerce')
+                    
+                    # Clean and standardize dates
+                    if 'Date' in df.columns:
+                        def standardize_date(date_str):
+                            if pd.isna(date_str) or not str(date_str).strip():
+                                return None
+                            
+                            date_str = str(date_str).strip()
+                            try:
+                                # Try parsing with different formats
+                                formats = [
+                                    '%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y', '%Y/%m/%d',
+                                    '%d-%b-%Y', '%d %b %Y', '%b %d, %Y', '%B %d, %Y',
+                                    '%d-%m-%y', '%d/%m/%y', '%y-%m-%d', '%y/%m/%d'
+                                ]
+                                
+                                for fmt in formats:
+                                    try:
+                                        return datetime.strptime(date_str, fmt).strftime('%Y-%m-%d')
+                                    except ValueError:
+                                        continue
+                                        
+                                return date_str  # Return original if no format matches
+                            except Exception:
+                                return date_str
+                                
+                        df['Date'] = df['Date'].apply(standardize_date)
+                    
+                    # Save to Excel
+                    df.to_excel(output_excel_path, index=False)
+                    print(f"Successfully extracted {len(df)} transactions and saved to {output_excel_path}")
+                    
+                    # Display first few rows
+                    print("\nFirst few transactions:")
+                    print(df.head().to_string())
+                else:
+                    print("No transaction data found.")
+                    
+        except ImportError:
+            print("Please install pdfplumber: pip install pdfplumber")
+        except Exception as e:
+            print(f"All extraction approaches failed. Final error: {str(e)}")
+            print("Tips to fix the issue:")
+            print("1. Make sure the PDF file exists and is accessible")
+            print("2. Install Ghostscript for better table extraction")
+            print("3. Check if the PDF is secured/encrypted")
+            print("4. Try with a different PDF reader tool")

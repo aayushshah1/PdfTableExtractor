@@ -45,7 +45,13 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                     
                     # Get column names from the first table's first row
                     if column_names is None and page_num == 0 and table_idx == 0:
-                        column_names = [str(col) if col else f"Column_{i}" for i, col in enumerate(table[0])]
+                        # Get the column names and filter out None values
+                        column_names = []
+                        for i, col in enumerate(table[0]):
+                            if col is not None and col.strip():  # Only add non-empty columns
+                                column_names.append(col)
+                            # Skip None columns - don't add "Column_2" etc.
+                        
                         print(f"Using column names: {column_names}")
                         
                         # Skip the header row for the first table
@@ -63,14 +69,14 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                             # This is a transaction row (not a Scrip_Symbol row)
                             transaction = {}
                             
-                            # Use column names if available, otherwise use indices
+                            # Map columns by position, not by name (to avoid Column_2 issue)
+                            col_index = 0
                             for i, cell in enumerate(row):
-                                if i < len(column_names):
-                                    col_name = column_names[i]
-                                else:
-                                    col_name = f"Column_{i}"
-                                    
-                                transaction[col_name] = cell
+                                if cell is not None:
+                                    # Only include columns with actual header names
+                                    if col_index < len(column_names):
+                                        transaction[column_names[col_index]] = cell
+                                        col_index += 1
                             
                             all_transactions.append(transaction)
     
@@ -83,7 +89,6 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
         df = pd.DataFrame(all_transactions)
         
         # Clean data
-        
         # 1. Clean numeric columns - remove commas and convert to numbers
         numeric_cols = ['B.Qty', 'B.Rate', 'S.Qty', 'S.Rate', 'N.Qty', 'N.Rate', 'N.Amt']
         for col in numeric_cols:
@@ -125,6 +130,10 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
         for col in df.columns:
             if df[col].dtype == 'object':
                 df[col] = df[col].str.replace('\n', ' ', regex=False)
+        
+        # 4. Remove duplicate header rows that might have been extracted as data
+        if 'Company' in df.columns and 'Date' in df.columns:
+            df = df[~((df['Company'] == 'Company') & (df['Date'] == 'Date'))]
         
         # Save to Excel
         df.to_excel(output_excel_path, index=False)
