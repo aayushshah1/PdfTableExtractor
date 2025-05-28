@@ -1,6 +1,7 @@
 venv/
-Data/
 node_modules/
 .env
 .DS_Store
 *.log
+explore_pdf.py
+

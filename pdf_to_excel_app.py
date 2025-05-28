@@ -111,6 +111,46 @@ class PDFToExcelApp:
         thread.daemon = True
         thread.start()
     
+    def open_excel_file(self, filepath):
+        """Open the Excel file with the default application"""
+        import platform
+        import subprocess
+        
+        try:
+            if platform.system() == 'Darwin':  # macOS
+                subprocess.call(('open', filepath))
+            elif platform.system() == 'Windows':
+                os.startfile(filepath)
+            else:  # Linux
+                subprocess.call(('xdg-open', filepath))
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open the file: {e}")
+
+    def fix_missing_scrip_symbols(self, output_path):
+        """Fix any missing scrip symbols in the extracted data"""
+        try:
+            import pandas as pd
+            
+            # Read the Excel file
+            df = pd.read_excel(output_path)
+            
+            # Check if the DataFrame has a Scrip_Symbol column and needs fixing
+            if 'Scrip_Symbol' in df.columns:
+                # Replace 'Unknown' with the last non-Unknown value
+                last_valid_symbol = None
+                for idx, row in df.iterrows():
+                    current = row['Scrip_Symbol']
+                    if current != 'Unknown' and pd.notna(current) and str(current).strip():
+                        last_valid_symbol = current
+                    elif last_valid_symbol is not None:
+                        df.at[idx, 'Scrip_Symbol'] = last_valid_symbol
+                
+                # Save the fixed DataFrame back to Excel
+                df.to_excel(output_path, index=False)
+                print(f"Fixed missing Scrip_Symbol values in {output_path}")
+        except Exception as e:
+            print(f"Error fixing Scrip_Symbol values: {e}")
+
     def run_conversion(self, pdf_path, output_path):
         try:
             # Redirect stdout to capture console output
@@ -125,6 +165,14 @@ class PDFToExcelApp:
             # Get back console output
             sys.stdout = original_stdout
             log_output = captured_output.getvalue()
+            
+            # Fix missing Scrip_Symbol values if extraction was successful
+            if result is not None:
+                actual_output_path = output_path
+                if actual_output_path is None:
+                    base_name = os.path.splitext(os.path.basename(pdf_path))[0]
+                    actual_output_path = f"{base_name}_extraction.xlsx"
+                self.fix_missing_scrip_symbols(actual_output_path)
             
             # Update GUI with results
             self.root.after(0, self.update_status, result, output_path, log_output)
@@ -158,21 +206,6 @@ class PDFToExcelApp:
         self.progress.stop()
         self.status_var.set(f"Error: {error_message}")
         messagebox.showerror("Error", f"An error occurred during conversion:\n\n{error_message}")
-    
-    def open_excel_file(self, filepath):
-        """Open the Excel file with the default application"""
-        import platform
-        import subprocess
-        
-        try:
-            if platform.system() == 'Darwin':  # macOS
-                subprocess.call(('open', filepath))
-            elif platform.system() == 'Windows':
-                os.startfile(filepath)
-            else:  # Linux
-                subprocess.call(('xdg-open', filepath))
-        except Exception as e:
-            messagebox.showerror("Error", f"Could not open the file: {e}")
 
 if __name__ == "__main__":
     root = tk.Tk()
