@@ -50,7 +50,9 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                         for i, col in enumerate(table[0]):
                             if col is not None and col.strip():  # Only add non-empty columns
                                 column_names.append(col)
-                            # Skip None columns - don't add "Column_2" etc.
+                        
+                        # Add "Scrip_Symbol" as the first column name
+                        column_names.insert(0, "Scrip_Symbol")
                         
                         print(f"Using column names: {column_names}")
                         
@@ -61,22 +63,34 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                         start_row = 0
                     
                     # Process rows
+                    current_scrip_symbol = None  # To track the current script symbol
+                    
                     for row_idx, row in enumerate(table[start_row:], start_row):
-                        # Check if this is a row with more than 2 columns of data
+                        # Check if this is a Scrip_Symbol row
+                        if row and len(row) > 2 and row[0] == 'Scrip_Symbol :' and row[2] is not None:
+                            # Extract the scrip symbol (e.g., "500116 IDBI - MITHIL DEEPAK KOTWAL")
+                            current_scrip_symbol = row[2]
+                            continue  # Skip this row from the final output
+                        
+                        # Check if this is a row with more than 2 columns of data (transaction row)
                         non_empty_cols = sum(1 for cell in row if cell is not None and str(cell).strip())
                         
                         if non_empty_cols > 2:
-                            # This is a transaction row (not a Scrip_Symbol row)
+                            # This is a transaction row
                             transaction = {}
                             
-                            # Map columns by position, not by name (to avoid Column_2 issue)
-                            col_index = 0
-                            for i, cell in enumerate(row):
-                                if cell is not None:
-                                    # Only include columns with actual header names
-                                    if col_index < len(column_names):
-                                        transaction[column_names[col_index]] = cell
-                                        col_index += 1
+                            # Add the current script symbol as the first column
+                            if current_scrip_symbol:
+                                transaction[column_names[0]] = current_scrip_symbol
+                            else:
+                                transaction[column_names[0]] = "Unknown"
+                            
+                            # Map the rest of the columns
+                            col_index = 1  # Start from 1 since we've already added Scrip_Symbol
+                            for cell in row:
+                                if cell is not None and col_index < len(column_names):
+                                    transaction[column_names[col_index]] = cell
+                                    col_index += 1
                             
                             all_transactions.append(transaction)
     
@@ -134,6 +148,13 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
         # 4. Remove duplicate header rows that might have been extracted as data
         if 'Company' in df.columns and 'Date' in df.columns:
             df = df[~((df['Company'] == 'Company') & (df['Date'] == 'Date'))]
+        
+        # 5. Clean up the Scrip_Symbol column - remove the "Scrip_Symbol :" prefix if present
+        if 'Scrip_Symbol' in df.columns:
+            df['Scrip_Symbol'] = df['Scrip_Symbol'].astype(str)
+            df['Scrip_Symbol'] = df['Scrip_Symbol'].apply(
+                lambda x: x.replace('Scrip_Symbol :', '').strip() if 'Scrip_Symbol :' in x else x
+            )
         
         # Save to Excel
         df.to_excel(output_excel_path, index=False)
