@@ -3,5 +3,12 @@ node_modules/
 .env
 .DS_Store
 *.log
-explore_pdf.py
+__pycache__/
+Main_extraction.xlsx
+FinalOutput.xlsx
+*.xlsx
+Data/
+dist/
+build/
+*.spec
 
