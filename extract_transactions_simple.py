@@ -173,9 +173,48 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
             
             df['Scrip_Symbol'] = df['Scrip_Symbol'].apply(clean_scrip_symbol)
         
-        # Save to Excel - using ExcelWriter to support multiple sheets later
-        with pd.ExcelWriter(output_excel_path) as writer:
+        # Instead of using multiple sheets, we'll place everything in one sheet
+        # Create a summary portfolio dataframe
+        portfolio_df = None
+        if 'Scrip_Symbol' in df.columns and 'N.Qty' in df.columns:
+            # Group by Scrip_Symbol and sum N.Qty
+            portfolio_df = df.groupby('Scrip_Symbol')['N.Qty'].sum().reset_index()
+            # Add Current_Price column (will add formula later)
+            portfolio_df['Current_Price'] = ''
+            print(f"Created Portfolio summary with {len(portfolio_df)} unique securities")
+        
+        # Save to Excel with transactions and portfolio in the same sheet
+        with pd.ExcelWriter(output_excel_path, engine='openpyxl') as writer:
+            # Write transactions to the first part of the sheet
             df.to_excel(writer, sheet_name='Transactions', index=False)
+            
+            # If portfolio data exists, add it below with a 3-row gap
+            if portfolio_df is not None:
+                # Calculate the starting row for portfolio (transactions rows + header + 3 blank rows)
+                portfolio_start_row = len(df) + 1 + 3
+                
+                # Write a header for the portfolio section
+                worksheet = writer.sheets['Transactions']
+                worksheet.cell(row=portfolio_start_row, column=1, value="PORTFOLIO SUMMARY")
+                
+                # Write portfolio data
+                for i, row in portfolio_df.iterrows():
+                    row_idx = portfolio_start_row + 2 + i  # +2 for portfolio header and column headers
+                    
+                    # Write Scrip_Symbol
+                    worksheet.cell(row=row_idx, column=1, value=row['Scrip_Symbol'])
+                    
+                    # Write N.Qty
+                    worksheet.cell(row=row_idx, column=2, value=row['N.Qty'])
+                    
+                    # Add GOOGLEFINANCE formula for Current_Price
+                    cell_ref = worksheet.cell(row=row_idx, column=1).coordinate  # Get cell reference (e.g., A10)
+                    worksheet.cell(row=row_idx, column=3, value=f'=GOOGLEFINANCE({cell_ref})')
+                
+                # Add column headers for the portfolio section
+                worksheet.cell(row=portfolio_start_row + 1, column=1, value="Scrip_Symbol")
+                worksheet.cell(row=portfolio_start_row + 1, column=2, value="Total_Quantity")
+                worksheet.cell(row=portfolio_start_row + 1, column=3, value="Current_Price")
         
         print(f"\nSuccessfully extracted {len(df)} rows and saved to {output_excel_path}")
         
