@@ -138,16 +138,22 @@ class PDFToExcelApp:
             if 'Scrip_Symbol' in df.columns:
                 # Find the portfolio section to avoid changing it
                 portfolio_start_idx = None
+                portfolio_value_idx = None
+                
                 for idx, row in df.iterrows():
-                    if str(row.get('Scrip_Symbol', '')) == 'PORTFOLIO SUMMARY':
+                    if str(row.get('Scrip_Symbol', '')) == 'Portfolio_Value':
+                        portfolio_value_idx = idx
+                        break
+                    elif str(row.get('Scrip_Symbol', '')) == 'PORTFOLIO SUMMARY':
                         portfolio_start_idx = idx
                         break
                 
                 # Replace 'Unknown' with the last non-Unknown value only in transaction section
                 last_valid_symbol = None
                 for idx, row in df.iterrows():
-                    # Stop at the portfolio section
-                    if portfolio_start_idx is not None and idx >= portfolio_start_idx:
+                    # Stop at the portfolio or portfolio value section
+                    if (portfolio_start_idx is not None and idx >= portfolio_start_idx) or \
+                       (portfolio_value_idx is not None and idx >= portfolio_value_idx):
                         break
                     
                     current = row['Scrip_Symbol']
@@ -163,7 +169,7 @@ class PDFToExcelApp:
                 print(f"Fixed missing Scrip_Symbol values in {output_path}")
         except Exception as e:
             print(f"Error fixing Scrip_Symbol values: {e}")
-
+    
     def fix_portfolio_formulas(self, output_path):
         """Fix and add formulas to the portfolio summary section"""
         try:
@@ -183,11 +189,14 @@ class PDFToExcelApp:
                     portfolio_value_row = row
                 elif value == "PORTFOLIO SUMMARY":
                     portfolio_summary_row = row
+                    break
             
             # If we found Portfolio_Value row, update its formulas
             if portfolio_value_row:
                 # Set TODAY() formula in Date column (column 3)
                 sheet.cell(row=portfolio_value_row, column=3).value = "=TODAY()"
+                # Clear any value that might be in column 2
+                sheet.cell(row=portfolio_value_row, column=2).value = None
             
             # Now process the Portfolio Summary section
             if portfolio_summary_row:
@@ -203,7 +212,7 @@ class PDFToExcelApp:
                     while last_row <= sheet.max_row and sheet.cell(row=last_row, column=1).value not in (None, "TOTAL"):
                         # Add GOOGLEFINANCE formula for each security
                         symbol = sheet.cell(row=last_row, column=1).value
-                        if symbol:
+                        if symbol and symbol != "Unknown":
                             sheet.cell(row=last_row, column=3).value = f'=GOOGLEFINANCE("{symbol}")'
                         
                         # Add Value formula (quantity × price)
@@ -271,7 +280,10 @@ class PDFToExcelApp:
                     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
                     actual_output_path = f"{base_name}_extraction.xlsx"
                 
+                # First fix missing Scrip_Symbol values in the transaction data
                 self.fix_missing_scrip_symbols(actual_output_path)
+                
+                # Then apply portfolio formulas and update TODAY() and N.Amt references
                 self.fix_portfolio_formulas(actual_output_path)
             
             # Update GUI with results
