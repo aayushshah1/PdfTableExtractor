@@ -131,26 +131,88 @@ class PDFToExcelApp:
         try:
             import pandas as pd
             
-            # Read the Excel file
+            # Read the Excel file directly
             df = pd.read_excel(output_path)
             
             # Check if the DataFrame has a Scrip_Symbol column and needs fixing
             if 'Scrip_Symbol' in df.columns:
-                # Replace 'Unknown' with the last non-Unknown value
+                # Find the portfolio section to avoid changing it
+                portfolio_start_idx = None
+                for idx, row in df.iterrows():
+                    if str(row.get('Scrip_Symbol', '')) == 'PORTFOLIO SUMMARY':
+                        portfolio_start_idx = idx
+                        break
+                
+                # Replace 'Unknown' with the last non-Unknown value only in transaction section
                 last_valid_symbol = None
                 for idx, row in df.iterrows():
+                    # Stop at the portfolio section
+                    if portfolio_start_idx is not None and idx >= portfolio_start_idx:
+                        break
+                    
                     current = row['Scrip_Symbol']
                     if current != 'Unknown' and pd.notna(current) and str(current).strip():
                         last_valid_symbol = current
                     elif last_valid_symbol is not None:
                         df.at[idx, 'Scrip_Symbol'] = last_valid_symbol
                 
-                # Save the fixed DataFrame back to Excel
-                df.to_excel(output_path, index=False)
+                # Save the fixed DataFrame back to Excel, preserving all rows
+                with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+                    df.to_excel(writer, index=False)
+                
                 print(f"Fixed missing Scrip_Symbol values in {output_path}")
         except Exception as e:
             print(f"Error fixing Scrip_Symbol values: {e}")
 
+    def fix_portfolio_formulas(self, output_path):
+        """Fix and add formulas to the portfolio summary section"""
+        try:
+            import openpyxl
+            
+            # Load the workbook
+            workbook = openpyxl.load_workbook(output_path)
+            sheet = workbook.active
+            
+            # Find the PORTFOLIO SUMMARY section
+            portfolio_row = None
+            for row in range(1, sheet.max_row + 1):
+                if sheet.cell(row=row, column=1).value == "PORTFOLIO SUMMARY":
+                    portfolio_row = row
+                    break
+            
+            if portfolio_row:
+                # Find header row (should be portfolio_row + 1)
+                header_row = portfolio_row + 1
+                
+                # Verify the headers
+                if (sheet.cell(row=header_row, column=1).value == "Scrip_Symbol" and
+                    sheet.cell(row=header_row, column=2).value == "Total_Quantity"):
+                    
+                    # Find the last data row
+                    last_row = header_row + 1
+                    while last_row <= sheet.max_row and sheet.cell(row=last_row, column=1).value not in (None, "TOTAL"):
+                        # Add/fix GOOGLEFINANCE formula
+                        symbol = sheet.cell(row=last_row, column=1).value
+                        if symbol:
+                            sheet.cell(row=last_row, column=3).value = f'=GOOGLEFINANCE("{symbol}")'
+                        
+                        last_row += 1
+                    
+                    # Add TOTAL row if it doesn't exist
+                    if last_row <= sheet.max_row and sheet.cell(row=last_row, column=1).value != "TOTAL":
+                        sheet.cell(row=last_row, column=1).value = "TOTAL"
+                        
+                        # Add SUM formula for the Total_Quantity column
+                        first_cell = sheet.cell(row=header_row+1, column=2).coordinate
+                        last_cell = sheet.cell(row=last_row-1, column=2).coordinate
+                        sheet.cell(row=last_row, column=2).value = f"=SUM({first_cell}:{last_cell})"
+            
+            # Save the workbook
+            workbook.save(output_path)
+            print(f"Fixed portfolio formulas in {output_path}")
+        except Exception as e:
+            print(f"Error fixing portfolio formulas: {e}")
+    
     def run_conversion(self, pdf_path, output_path):
         try:
             # Redirect stdout to capture console output
@@ -172,6 +234,8 @@ class PDFToExcelApp:
                 if actual_output_path is None:
                     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
                     actual_output_path = f"{base_name}_extraction.xlsx"
+                
+                # Apply symbol fixes without removing any rows
                 self.fix_missing_scrip_symbols(actual_output_path)
             
             # Update GUI with results

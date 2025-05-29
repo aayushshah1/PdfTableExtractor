@@ -75,12 +75,16 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                         # Check if this is a row with more than 2 columns of data (transaction row)
                         non_empty_cols = sum(1 for cell in row if cell is not None and str(cell).strip())
                         
+                        # Only process rows with sufficient data (more than 2 columns)
                         if non_empty_cols > 2:
                             # This is a transaction row
                             transaction = {}
                             
-                            # Add the current script symbol as the first column
-                            if current_scrip_symbol:
+                            # Only add the current scrip symbol if the row has substantial data (8+ columns)
+                            # This prevents filling scrip symbol for empty/near-empty rows
+                            filled_cols_count = sum(1 for cell in row if cell is not None and str(cell).strip())
+                            
+                            if current_scrip_symbol and filled_cols_count >= 8:
                                 transaction[column_names[0]] = current_scrip_symbol
                             else:
                                 transaction[column_names[0]] = "Unknown"
@@ -173,6 +177,16 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
             
             df['Scrip_Symbol'] = df['Scrip_Symbol'].apply(clean_scrip_symbol)
         
+        # Before creating portfolio summary, remove rows with very few filled columns
+        # This will prevent empty lines after the transaction table
+        if 'N.Qty' in df.columns:
+            # Count non-empty cells in each row
+            df['filled_columns'] = df.apply(lambda row: sum(pd.notna(val) and str(val).strip() != '' for val in row), axis=1)
+            # Keep only rows with sufficient data (8+ filled columns)
+            df = df[df['filled_columns'] >= 8]
+            # Drop the helper column
+            df = df.drop('filled_columns', axis=1)
+        
         # Instead of using multiple sheets, we'll place everything in one sheet
         # Create a summary portfolio dataframe
         portfolio_df = None
@@ -188,14 +202,19 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
             # Write transactions to the first part of the sheet
             df.to_excel(writer, sheet_name='Transactions', index=False)
             
-            # If portfolio data exists, add it below with a 3-row gap
+            # If portfolio data exists, add it below with a 1-row gap (was 3 before)
             if portfolio_df is not None:
-                # Calculate the starting row for portfolio (transactions rows + header + 3 blank rows)
-                portfolio_start_row = len(df) + 1 + 3
+                # Calculate the starting row for portfolio (transactions rows + header + 1 blank row)
+                portfolio_start_row = len(df) + 1 + 1
                 
                 # Write a header for the portfolio section
                 worksheet = writer.sheets['Transactions']
                 worksheet.cell(row=portfolio_start_row, column=1, value="PORTFOLIO SUMMARY")
+                
+                # Write column headers for the portfolio section
+                worksheet.cell(row=portfolio_start_row + 1, column=1, value="Scrip_Symbol")
+                worksheet.cell(row=portfolio_start_row + 1, column=2, value="Total_Quantity")
+                worksheet.cell(row=portfolio_start_row + 1, column=3, value="Current_Price")
                 
                 # Write portfolio data
                 for i, row in portfolio_df.iterrows():
@@ -208,13 +227,17 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                     worksheet.cell(row=row_idx, column=2, value=row['N.Qty'])
                     
                     # Add GOOGLEFINANCE formula for Current_Price
-                    cell_ref = worksheet.cell(row=row_idx, column=1).coordinate  # Get cell reference (e.g., A10)
-                    worksheet.cell(row=row_idx, column=3, value=f'=GOOGLEFINANCE({cell_ref})')
+                    formula = f'=GOOGLEFINANCE("{row["Scrip_Symbol"]}")'
+                    worksheet.cell(row=row_idx, column=3, value=formula)
                 
-                # Add column headers for the portfolio section
-                worksheet.cell(row=portfolio_start_row + 1, column=1, value="Scrip_Symbol")
-                worksheet.cell(row=portfolio_start_row + 1, column=2, value="Total_Quantity")
-                worksheet.cell(row=portfolio_start_row + 1, column=3, value="Current_Price")
+                # Add TOTAL row
+                total_row = portfolio_start_row + 2 + len(portfolio_df)
+                worksheet.cell(row=total_row, column=1, value="TOTAL")
+                
+                # Add SUM formula for the Total_Quantity column
+                first_qty_cell = worksheet.cell(row=portfolio_start_row+2, column=2).coordinate
+                last_qty_cell = worksheet.cell(row=total_row-1, column=2).coordinate
+                worksheet.cell(row=total_row, column=2, value=f"=SUM({first_qty_cell}:{last_qty_cell})")
         
         print(f"\nSuccessfully extracted {len(df)} rows and saved to {output_excel_path}")
         
