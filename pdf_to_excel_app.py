@@ -173,6 +173,18 @@ class PDFToExcelApp:
             workbook = openpyxl.load_workbook(output_path)
             sheet = workbook.active
             
+            # Find the Portfolio_Value row
+            portfolio_value_row = None
+            for row in range(1, sheet.max_row + 1):
+                if sheet.cell(row=row, column=1).value == "Portfolio_Value":
+                    portfolio_value_row = row
+                    break
+            
+            if portfolio_value_row:
+                # Fix or update TODAY() formula
+                date_col = 2  # Assuming Date is the second column
+                sheet.cell(row=portfolio_value_row, column=date_col).value = "=TODAY()"
+            
             # Find the PORTFOLIO SUMMARY section
             portfolio_row = None
             for row in range(1, sheet.max_row + 1):
@@ -196,16 +208,33 @@ class PDFToExcelApp:
                         if symbol:
                             sheet.cell(row=last_row, column=3).value = f'=GOOGLEFINANCE("{symbol}")'
                         
+                        # Add/fix Value formula
+                        qty_ref = sheet.cell(row=last_row, column=2).coordinate
+                        price_ref = sheet.cell(row=last_row, column=3).coordinate
+                        sheet.cell(row=last_row, column=4).value = f"={qty_ref}*{price_ref}"
+                        
                         last_row += 1
                     
-                    # Add TOTAL row if it doesn't exist
-                    if last_row <= sheet.max_row and sheet.cell(row=last_row, column=1).value != "TOTAL":
-                        sheet.cell(row=last_row, column=1).value = "TOTAL"
+                    # Fix TOTAL row
+                    total_row = last_row
+                    if sheet.cell(row=total_row, column=1).value == "TOTAL":
+                        first_qty_cell = sheet.cell(row=header_row+1, column=2).coordinate
+                        last_qty_cell = sheet.cell(row=total_row-1, column=2).coordinate
+                        sheet.cell(row=total_row, column=2).value = f"=SUM({first_qty_cell}:{last_qty_cell})"
                         
-                        # Add SUM formula for the Total_Quantity column
-                        first_cell = sheet.cell(row=header_row+1, column=2).coordinate
-                        last_cell = sheet.cell(row=last_row-1, column=2).coordinate
-                        sheet.cell(row=last_row, column=2).value = f"=SUM({first_cell}:{last_cell})"
+                        first_value_cell = sheet.cell(row=header_row+1, column=4).coordinate
+                        last_value_cell = sheet.cell(row=total_row-1, column=4).coordinate
+                        sheet.cell(row=total_row, column=4).value = f"=SUM({first_value_cell}:{last_value_cell})"
+                        
+                        # Update Portfolio_Value reference if found
+                        if portfolio_value_row:
+                            for col in range(1, sheet.max_column + 1):
+                                col_header = sheet.cell(row=1, column=col).value
+                                if col_header == "N.Amt":
+                                    n_amt_col = col
+                                    total_value_ref = sheet.cell(row=total_row, column=4).coordinate
+                                    sheet.cell(row=portfolio_value_row, column=n_amt_col).value = f"={total_value_ref}"
+                                    break
             
             # Save the workbook
             workbook.save(output_path)
@@ -235,8 +264,8 @@ class PDFToExcelApp:
                     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
                     actual_output_path = f"{base_name}_extraction.xlsx"
                 
-                # Apply symbol fixes without removing any rows
                 self.fix_missing_scrip_symbols(actual_output_path)
+                self.fix_portfolio_formulas(actual_output_path)
             
             # Update GUI with results
             self.root.after(0, self.update_status, result, output_path, log_output)

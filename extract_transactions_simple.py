@@ -195,6 +195,8 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
             portfolio_df = df.groupby('Scrip_Symbol')['N.Qty'].sum().reset_index()
             # Add Current_Price column (will add formula later)
             portfolio_df['Current_Price'] = ''
+            # Add Value column (will add formula later)
+            portfolio_df['Value'] = ''
             print(f"Created Portfolio summary with {len(portfolio_df)} unique securities")
         
         # Save to Excel with transactions and portfolio in the same sheet
@@ -202,19 +204,30 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
             # Write transactions to the first part of the sheet
             df.to_excel(writer, sheet_name='Transactions', index=False)
             
-            # If portfolio data exists, add it below with a 1-row gap (was 3 before)
+            # Get worksheet reference
+            worksheet = writer.sheets['Transactions']
+            
+            # Add Portfolio_Value row right after transactions table
+            portfolio_value_row = len(df) + 1
+            
+            # Add Portfolio Value row (will be updated with proper formula references later)
+            worksheet.cell(row=portfolio_value_row, column=1, value="Portfolio_Value")
+            worksheet.cell(row=portfolio_value_row, column=2, value="=TODAY()")  # TODAY() in Date column
+            # N.Amt cell will be filled after creating the portfolio summary
+            
+            # If portfolio data exists, add it below with a 1-row gap
             if portfolio_df is not None:
-                # Calculate the starting row for portfolio (transactions rows + header + 1 blank row)
-                portfolio_start_row = len(df) + 1 + 1
+                # Calculate the starting row for portfolio (Portfolio_Value row + 1 blank row)
+                portfolio_start_row = portfolio_value_row + 2
                 
                 # Write a header for the portfolio section
-                worksheet = writer.sheets['Transactions']
                 worksheet.cell(row=portfolio_start_row, column=1, value="PORTFOLIO SUMMARY")
                 
                 # Write column headers for the portfolio section
                 worksheet.cell(row=portfolio_start_row + 1, column=1, value="Scrip_Symbol")
                 worksheet.cell(row=portfolio_start_row + 1, column=2, value="Total_Quantity")
                 worksheet.cell(row=portfolio_start_row + 1, column=3, value="Current_Price")
+                worksheet.cell(row=portfolio_start_row + 1, column=4, value="Value")
                 
                 # Write portfolio data
                 for i, row in portfolio_df.iterrows():
@@ -224,20 +237,42 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                     worksheet.cell(row=row_idx, column=1, value=row['Scrip_Symbol'])
                     
                     # Write N.Qty
-                    worksheet.cell(row=row_idx, column=2, value=row['N.Qty'])
+                    qty_cell = worksheet.cell(row=row_idx, column=2, value=row['N.Qty'])
                     
                     # Add GOOGLEFINANCE formula for Current_Price
-                    formula = f'=GOOGLEFINANCE("{row["Scrip_Symbol"]}")'
-                    worksheet.cell(row=row_idx, column=3, value=formula)
+                    symbol = row["Scrip_Symbol"]
+                    price_cell = worksheet.cell(row=row_idx, column=3)
+                    price_cell.value = f'=GOOGLEFINANCE("{symbol}")'
+                    
+                    # Add Value formula (quantity * price)
+                    qty_ref = worksheet.cell(row=row_idx, column=2).coordinate
+                    price_ref = worksheet.cell(row=row_idx, column=3).coordinate
+                    worksheet.cell(row=row_idx, column=4, value=f"={qty_ref}*{price_ref}")
                 
                 # Add TOTAL row
                 total_row = portfolio_start_row + 2 + len(portfolio_df)
                 worksheet.cell(row=total_row, column=1, value="TOTAL")
                 
-                # Add SUM formula for the Total_Quantity column
+                # Add SUM formulas for the Total_Quantity and Value columns
                 first_qty_cell = worksheet.cell(row=portfolio_start_row+2, column=2).coordinate
                 last_qty_cell = worksheet.cell(row=total_row-1, column=2).coordinate
                 worksheet.cell(row=total_row, column=2, value=f"=SUM({first_qty_cell}:{last_qty_cell})")
+                
+                # Add SUM formula for the Value column
+                first_value_cell = worksheet.cell(row=portfolio_start_row+2, column=4).coordinate
+                last_value_cell = worksheet.cell(row=total_row-1, column=4).coordinate
+                total_value_cell = worksheet.cell(row=total_row, column=4, value=f"=SUM({first_value_cell}:{last_value_cell})")
+                
+                # Now update the Portfolio_Value row's N.Amt cell with reference to total portfolio value
+                total_value_ref = total_value_cell.coordinate
+                n_amt_col = None
+                for col_idx, col_name in enumerate(df.columns, 1):
+                    if col_name == "N.Amt":
+                        n_amt_col = col_idx
+                        break
+                
+                if n_amt_col:
+                    worksheet.cell(row=portfolio_value_row, column=n_amt_col, value=f"={total_value_ref}")
         
         print(f"\nSuccessfully extracted {len(df)} rows and saved to {output_excel_path}")
         
