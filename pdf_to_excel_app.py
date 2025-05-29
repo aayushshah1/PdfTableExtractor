@@ -168,103 +168,80 @@ class PDFToExcelApp:
         """Fix and add formulas to the portfolio summary section"""
         try:
             import openpyxl
-            import pandas as pd
             
-            # First, read the Excel file to understand its structure
-            df = pd.read_excel(output_path)
-            
-            # Find where transaction data ends and portfolio summary begins
-            transaction_end_idx = None
-            portfolio_summary_idx = None
-            
-            for idx, row in df.iterrows():
-                if row.get('Scrip_Symbol') == 'PORTFOLIO SUMMARY':
-                    portfolio_summary_idx = idx
-                    break
-            
-            if portfolio_summary_idx is not None:
-                transaction_end_idx = portfolio_summary_idx - 2  # -2 accounts for the gap row
-            else:
-                # No portfolio summary found, transactions go to the end
-                transaction_end_idx = len(df) - 1
-                
-            # Now work with openpyxl for detailed formatting and formula insertion
+            # Load the workbook
             workbook = openpyxl.load_workbook(output_path)
             sheet = workbook.active
             
-            # Before we make any changes, identify the current portfolio structure
-            portfolio_row = None
+            # Find Portfolio_Value and Portfolio Summary rows
+            portfolio_value_row = None
+            portfolio_summary_row = None
+            
             for row in range(1, sheet.max_row + 1):
-                if sheet.cell(row=row, column=1).value == "PORTFOLIO SUMMARY":
-                    portfolio_row = row
-                    break
+                value = sheet.cell(row=row, column=1).value
+                if value == "Portfolio_Value":
+                    portfolio_value_row = row
+                elif value == "PORTFOLIO SUMMARY":
+                    portfolio_summary_row = row
             
-            # 1. First, cleanly create the Portfolio_Value row 
-            # We'll use the transaction_end_idx from pandas to get the exact position
-            portfolio_value_row = transaction_end_idx + 2  # +1 for 0-indexing to 1-indexing, +1 for next row
+            # If we found Portfolio_Value row, update its formulas
+            if portfolio_value_row:
+                # Set TODAY() formula in Date column (column 3)
+                sheet.cell(row=portfolio_value_row, column=3).value = "=TODAY()"
             
-            # Check if a Portfolio_Value row already exists and needs replacement
-            row_to_check = portfolio_value_row
-            cell_value = sheet.cell(row=row_to_check, column=1).value
-            
-            # If this isn't the Portfolio_Value row, we need to add it
-            if cell_value != "Portfolio_Value":
-                # Insert a new row
-                sheet.insert_rows(portfolio_value_row)
-            
-            # Set the Portfolio_Value row values
-            sheet.cell(row=portfolio_value_row, column=1, value="Portfolio_Value")
-            sheet.cell(row=portfolio_value_row, column=3, value="=TODAY()")  # TODAY() in Date column
-            sheet.cell(row=portfolio_value_row, column=2, value=None)  # Clear column 2
-            
-            # 2. Now handle the portfolio summary section
-            if portfolio_row:
-                # Find header row (should be portfolio_row + 1)
-                header_row = portfolio_row + 1
+            # Now process the Portfolio Summary section
+            if portfolio_summary_row:
+                # Find header row (should be portfolio_summary_row + 1)
+                header_row = portfolio_summary_row + 1
                 
-                # Verify the headers
+                # Verify the headers exist
                 if (sheet.cell(row=header_row, column=1).value == "Scrip_Symbol" and
                     sheet.cell(row=header_row, column=2).value == "Total_Quantity"):
                     
-                    # Find the last data row
+                    # Process each security row
                     last_row = header_row + 1
                     while last_row <= sheet.max_row and sheet.cell(row=last_row, column=1).value not in (None, "TOTAL"):
-                        # Add/fix GOOGLEFINANCE formula
+                        # Add GOOGLEFINANCE formula for each security
                         symbol = sheet.cell(row=last_row, column=1).value
                         if symbol:
-                            sheet.cell(row=last_row, column=3, value=f'=GOOGLEFINANCE("{symbol}")')
+                            sheet.cell(row=last_row, column=3).value = f'=GOOGLEFINANCE("{symbol}")'
                         
-                        # Add/fix Value formula
+                        # Add Value formula (quantity × price)
                         qty_ref = sheet.cell(row=last_row, column=2).coordinate
                         price_ref = sheet.cell(row=last_row, column=3).coordinate
-                        sheet.cell(row=last_row, column=4, value=f"={qty_ref}*{price_ref}")
+                        sheet.cell(row=last_row, column=4).value = f"={qty_ref}*{price_ref}"
                         
                         last_row += 1
                     
-                    # Fix TOTAL row
+                    # Process TOTAL row if it exists
                     total_row = last_row
-                    if sheet.cell(row=total_row, column=1).value == "TOTAL":
+                    if total_row <= sheet.max_row and sheet.cell(row=total_row, column=1).value == "TOTAL":
+                        # Add SUM formula for Total_Quantity
                         first_qty_cell = sheet.cell(row=header_row+1, column=2).coordinate
                         last_qty_cell = sheet.cell(row=total_row-1, column=2).coordinate
-                        sheet.cell(row=total_row, column=2, value=f"=SUM({first_qty_cell}:{last_qty_cell})")
+                        sheet.cell(row=total_row, column=2).value = f"=SUM({first_qty_cell}:{last_qty_cell})"
                         
+                        # Add SUM formula for Value
                         first_value_cell = sheet.cell(row=header_row+1, column=4).coordinate
                         last_value_cell = sheet.cell(row=total_row-1, column=4).coordinate
-                        sheet.cell(row=total_row, column=4, value=f"=SUM({first_value_cell}:{last_value_cell})")
+                        sheet.cell(row=total_row, column=4).value = f"=SUM({first_value_cell}:{last_value_cell})"
                         
-                        # Update Portfolio_Value reference with the total portfolio value
-                        total_value_ref = sheet.cell(row=total_row, column=4).coordinate
-                        # Find the N.Amt column index
-                        for col in range(1, sheet.max_column + 1):
-                            col_header = sheet.cell(row=1, column=col).value
-                            if col_header == "N.Amt":
-                                n_amt_col = col
-                                sheet.cell(row=portfolio_value_row, column=n_amt_col, value=f"={total_value_ref}")
-                                break
+                        # Link Portfolio_Value to the total value
+                        if portfolio_value_row:
+                            # Get the N.Amt column (usually column 11)
+                            n_amt_col = None
+                            for col in range(1, sheet.max_column + 1):
+                                if sheet.cell(row=1, column=col).value == "N.Amt":
+                                    n_amt_col = col
+                                    break
+                            
+                            if n_amt_col:
+                                total_value_ref = sheet.cell(row=total_row, column=4).coordinate
+                                sheet.cell(row=portfolio_value_row, column=n_amt_col).value = f"={total_value_ref}"
                         
-                        # Add Portfolio XIRR row after leaving one row below the total
+                        # Add Portfolio XIRR row after a blank row
                         xirr_row = total_row + 2  # +2 for one blank row
-                        sheet.cell(row=xirr_row, column=1, value="Portfolio XIRR")
+                        sheet.cell(row=xirr_row, column=1).value = "Portfolio XIRR"
             
             # Save the workbook
             workbook.save(output_path)
