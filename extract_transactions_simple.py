@@ -150,14 +150,33 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
             df = df[~((df['Company'] == 'Company') & (df['Date'] == 'Date'))]
         
         # 5. Clean up the Scrip_Symbol column - remove the "Scrip_Symbol :" prefix if present
+        # and extract just the company name without numbers and client name
         if 'Scrip_Symbol' in df.columns:
             df['Scrip_Symbol'] = df['Scrip_Symbol'].astype(str)
-            df['Scrip_Symbol'] = df['Scrip_Symbol'].apply(
-                lambda x: x.replace('Scrip_Symbol :', '').strip() if 'Scrip_Symbol :' in x else x
-            )
+            
+            def clean_scrip_symbol(symbol):
+                # First remove any "Scrip_Symbol :" prefix
+                symbol = symbol.replace('Scrip_Symbol :', '').strip()
+                
+                # If there's a dash, take only the part before it
+                if ' - ' in symbol:
+                    symbol = symbol.split(' - ')[0].strip()
+                
+                # Handle special case like "BSE BSE"
+                if symbol.startswith('BSE '):
+                    return 'BSE'
+                
+                # Remove leading numbers and spaces
+                symbol = re.sub(r'^\d+\s+', '', symbol)
+                
+                return symbol
+            
+            df['Scrip_Symbol'] = df['Scrip_Symbol'].apply(clean_scrip_symbol)
         
-        # Save to Excel
-        df.to_excel(output_excel_path, index=False)
+        # Save to Excel - using ExcelWriter to support multiple sheets later
+        with pd.ExcelWriter(output_excel_path) as writer:
+            df.to_excel(writer, sheet_name='Transactions', index=False)
+        
         print(f"\nSuccessfully extracted {len(df)} rows and saved to {output_excel_path}")
         
         # Show sample of extracted data
