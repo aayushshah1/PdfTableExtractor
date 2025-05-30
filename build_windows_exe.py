@@ -135,9 +135,9 @@ exe = EXE(pyz,
             f.write("Find sample PDFs in the 'sample_data' folder, if included.\n\n")
             f.write("For more information, visit: https://github.com/aayushshah1/PDFTableExtractor\n")
         
-        # Create the zip file
-        shutil.make_archive("PDFTableExtractor", 'zip', "dist/PDFTableExtractor")
-        print(f"Created: {os.path.abspath('PDFTableExtractor.zip')}")
+        # Create the zip file directly in the dist folder
+        shutil.make_archive("dist/PDFTableExtractor", 'zip', "dist/PDFTableExtractor")
+        print(f"Created: {os.path.abspath('dist/PDFTableExtractor.zip')}")
     else:
         print("ERROR: Build failed. Could not find PDFTableExtractor.exe in the dist folder.")
         print("Check the PyInstaller output above for any errors.")
