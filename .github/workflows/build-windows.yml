@@ -31,12 +31,14 @@ jobs:
     - name: Run build script
       run: |
         python build_windows_exe.py
+        dir
+        dir dist || echo "No dist folder"
     
     - name: Upload artifact
-      uses: actions/upload-artifact@v3.1.3
+      uses: actions/upload-artifact@v3
       with:
         name: PDFTableExtractor
-        path: PDFTableExtractor.zip
+        path: ./PDFTableExtractor.zip
     
     - name: Release
       uses: softprops/action-gh-release@v1
