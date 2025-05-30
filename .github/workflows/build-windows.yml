@@ -26,27 +26,57 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller==4.10
+        pip install pyinstaller cryptography pycparser cffi
     
-    - name: Run build script and debug
+    - name: Build with PyInstaller directly
       run: |
-        python build_windows_exe.py
-        echo "Checking directory contents:"
+        pyinstaller --onefile --windowed --name PDFTableExtractor pdf_to_excel_app.py --exclude-module cryptography
+    
+    - name: Debug directory structure
+      run: |
+        echo "Current directory:"
         dir
-        echo "Checking dist folder:"
-        dir dist || echo "No dist folder"
+        echo "Dist directory:"
+        dir dist || echo "No dist directory"
+        echo "Build directory:"
+        dir build || echo "No build directory"
+    
+    - name: Create distribution package
+      run: |
+        mkdir -p dist\PDFTableExtractor
+        if exist dist\PDFTableExtractor.exe (
+          copy dist\PDFTableExtractor.exe dist\PDFTableExtractor\
+          
+          echo "Creating README file..."
+          echo PDF Table Extractor > dist\PDFTableExtractor\README.txt
+          echo =================== >> dist\PDFTableExtractor\README.txt
+          echo. >> dist\PDFTableExtractor\README.txt
+          echo 1. Double-click PDFTableExtractor.exe to start the application >> dist\PDFTableExtractor\README.txt
+          echo 2. Click 'Browse' to select your PDF file >> dist\PDFTableExtractor\README.txt
+          echo 3. Click 'Convert to Excel' to process the PDF >> dist\PDFTableExtractor\README.txt
+          echo 4. When complete, you can open the Excel file directly >> dist\PDFTableExtractor\README.txt
+          echo. >> dist\PDFTableExtractor\README.txt
+          echo For more information, visit: https://github.com/aayushshah1/PDFTableExtractor >> dist\PDFTableExtractor\README.txt
+          
+          echo "Creating Zip file..."
+          powershell Compress-Archive -Path "dist\PDFTableExtractor\*" -DestinationPath "dist\PDFTableExtractor.zip" -Force
+          echo "Zip file created at dist\PDFTableExtractor.zip"
+        ) else (
+          echo "ERROR: PDFTableExtractor.exe not found in dist directory"
+          exit 1
+        )
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: PDFTableExtractor
-        path: ${{ github.workspace }}/dist/PDFTableExtractor.zip
-        if-no-files-found: warn
+        path: dist/PDFTableExtractor.zip
+        if-no-files-found: error
     
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: ${{ github.workspace }}/dist/PDFTableExtractor.zip
+        files: dist/PDFTableExtractor.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
