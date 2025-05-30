@@ -40,12 +40,13 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: PDFTableExtractor
-        path: dist/PDFTableExtractor.zip
+        path: ${{ github.workspace }}/dist/PDFTableExtractor.zip
+        if-no-files-found: warn
     
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: dist/PDFTableExtractor.zip
+        files: ${{ github.workspace }}/dist/PDFTableExtractor.zip
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
