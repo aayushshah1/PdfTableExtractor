@@ -263,7 +263,8 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                     # Add GOOGLEFINANCE formula for Current_Price
                     symbol = row["Scrip_Symbol"]
                     price_cell = worksheet.cell(row=row_idx, column=3)
-                    price_cell.value = f'=GOOGLEFINANCE("{symbol}")'
+                    symbol_ref = worksheet.cell(row=row_idx, column=1).coordinate
+                    price_cell.value = f'=INDEX(GOOGLEFINANCE({symbol_ref}, "close", TODAY()-1, TODAY()-1), 2, 2)'
                     
                     # Add Value formula (quantity * price)
                     qty_ref = worksheet.cell(row=row_idx, column=2).coordinate
@@ -294,6 +295,15 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                 
                 if n_amt_col:
                     worksheet.cell(row=portfolio_value_row, column=n_amt_col, value=f"={total_value_ref}")
+                
+                # Add Portfolio XIRR row after a blank row
+                xirr_row = total_row + 2  # +2 for one blank row
+                worksheet.cell(row=xirr_row, column=1, value="Portfolio XIRR")
+                
+                # Add Portfolio XIRR Percentage row
+                xirr_pct_row = xirr_row + 1
+                worksheet.cell(row=xirr_pct_row, column=1, value="Portfolio XIRR Percentage")
+                worksheet.cell(row=xirr_pct_row, column=2, value=f"={worksheet.cell(row=xirr_row, column=2).coordinate}*100")
         
         print(f"\nSuccessfully extracted {len(df)} rows and saved to {output_excel_path}")
         

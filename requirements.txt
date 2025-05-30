@@ -1,7 +1,3 @@
-camelot-py[cv]
 pandas
-openpyxl
-numpy
-opencv-python
-ghostscript
 pdfplumber
+openpyxl

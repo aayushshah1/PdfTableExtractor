@@ -1,6 +1,6 @@
 # PDF Table Extractor
 
-A tool for extracting transaction data tables from PDF files and converting them to Excel format.
+A tool for extracting transaction data tables from PDF files and converting them to Excel format with automatic portfolio summary generation.
 
 ![PDF Table Extractor Screenshot](images/screenshot.png)
 
@@ -21,6 +21,11 @@ The tool automatically handles multipage documents, preserves relationships betw
 - Simple graphical user interface
 - Support for complex table structures
 - Cleaning and standardization of data (dates, numeric values)
+- Automatic portfolio summary generation with:
+  - Total position quantities grouped by security
+  - GOOGLEFINANCE formulas for current prices
+  - Automatic value calculations
+- Portfolio XIRR calculation preparation
 - Preserves script/security information across pages
 - Custom Excel output path
 - Works on Windows, macOS, and Linux
@@ -37,7 +42,7 @@ The tool automatically handles multipage documents, preserves relationships betw
 #### Clone the Repository
 
 ```bash
-git clone hhttps://github.com/aayushshah1/PdfTableExtractor.git
+git clone https://github.com/aayushshah1/PdfTableExtractor.git
 cd pdf-table-extractor
 ```
 

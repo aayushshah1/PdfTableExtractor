@@ -207,7 +207,8 @@ class PDFToExcelApp:
                         # Add GOOGLEFINANCE formula for each security
                         symbol = sheet.cell(row=last_row, column=1).value
                         if symbol:  # No need to check for Unknown as it's already fixed
-                            sheet.cell(row=last_row, column=3).value = f'=GOOGLEFINANCE("{symbol}")'
+                            symbol_ref = sheet.cell(row=last_row, column=1).coordinate
+                            sheet.cell(row=last_row, column=3).value = f'=INDEX(GOOGLEFINANCE({symbol_ref}, "close", TODAY()-1, TODAY()-1), 2, 2)'
                         
                         # Add Value formula (quantity × price)
                         qty_ref = sheet.cell(row=last_row, column=2).coordinate
@@ -245,6 +246,11 @@ class PDFToExcelApp:
                         # Add Portfolio XIRR row after a blank row
                         xirr_row = total_row + 2  # +2 for one blank row
                         sheet.cell(row=xirr_row, column=1).value = "Portfolio XIRR"
+                        
+                        # Add Portfolio XIRR Percentage row
+                        xirr_pct_row = xirr_row + 1
+                        sheet.cell(row=xirr_pct_row, column=1).value = "Portfolio XIRR Percentage"
+                        sheet.cell(row=xirr_pct_row, column=2).value = f"={sheet.cell(row=xirr_row, column=2).coordinate}*100"
             
             # Save the workbook
             workbook.save(output_path)
