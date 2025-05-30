@@ -42,28 +42,29 @@ jobs:
         dir build || echo "No build directory"
     
     - name: Create distribution package
+      shell: cmd
       run: |
-        mkdir -p dist\PDFTableExtractor
+        mkdir dist\PDFTableExtractor
         if exist dist\PDFTableExtractor.exe (
           copy dist\PDFTableExtractor.exe dist\PDFTableExtractor\
           
-          echo "Creating README file..."
+          echo Creating README file...
           echo PDF Table Extractor > dist\PDFTableExtractor\README.txt
           echo =================== >> dist\PDFTableExtractor\README.txt
           echo. >> dist\PDFTableExtractor\README.txt
           echo 1. Double-click PDFTableExtractor.exe to start the application >> dist\PDFTableExtractor\README.txt
-          echo 2. Click 'Browse' to select your PDF file >> dist\PDFTableExtractor\README.txt
-          echo 3. Click 'Convert to Excel' to process the PDF >> dist\PDFTableExtractor\README.txt
+          echo 2. Click "Browse" to select your PDF file >> dist\PDFTableExtractor\README.txt
+          echo 3. Click "Convert to Excel" to process the PDF >> dist\PDFTableExtractor\README.txt
           echo 4. When complete, you can open the Excel file directly >> dist\PDFTableExtractor\README.txt
           echo. >> dist\PDFTableExtractor\README.txt
           echo For more information, visit: https://github.com/aayushshah1/PDFTableExtractor >> dist\PDFTableExtractor\README.txt
           
-          echo "Creating Zip file..."
-          powershell Compress-Archive -Path "dist\PDFTableExtractor\*" -DestinationPath "dist\PDFTableExtractor.zip" -Force
-          echo "Zip file created at dist\PDFTableExtractor.zip"
+          echo Creating Zip file...
+          powershell -Command "Compress-Archive -Path 'dist\PDFTableExtractor\*' -DestinationPath 'dist\PDFTableExtractor.zip' -Force"
+          echo Zip file created at dist\PDFTableExtractor.zip
         ) else (
-          echo "ERROR: PDFTableExtractor.exe not found in dist directory"
-          exit 1
+          echo ERROR: PDFTableExtractor.exe not found in dist directory
+          exit /b 1
         )
     
     - name: Upload artifact
