@@ -247,6 +247,23 @@ class PDFToExcelApp:
                         xirr_row = total_row + 2  # +2 for one blank row
                         sheet.cell(row=xirr_row, column=1).value = "Portfolio XIRR"
                         
+                        # Add XIRR formula that uses transaction dates and amounts
+                        # Find the date column (3) and N.Amt column
+                        n_amt_col = None
+                        for col in range(1, sheet.max_column + 1):
+                            if sheet.cell(row=1, column=col).value == "N.Amt":
+                                n_amt_col = col
+                                break
+                        
+                        if n_amt_col:
+                            # Create XIRR formula referencing dates (column 3) and N.Amt
+                            # Transaction rows start from row 2 (after header) and go through the Portfolio_Value row
+                            date_range = f"C2:C{portfolio_value_row}"
+                            amount_range = f"{chr(64+n_amt_col)}2:{chr(64+n_amt_col)}{portfolio_value_row}"
+                            # Fix: correct parameter order - values first, then dates
+                            xirr_formula = f"=XIRR({amount_range},{date_range})"
+                            sheet.cell(row=xirr_row, column=2).value = xirr_formula
+                        
                         # Add Portfolio XIRR Percentage row
                         xirr_pct_row = xirr_row + 1
                         sheet.cell(row=xirr_pct_row, column=1).value = "Portfolio XIRR Percentage"

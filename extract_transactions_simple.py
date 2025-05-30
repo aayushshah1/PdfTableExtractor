@@ -300,6 +300,23 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                 xirr_row = total_row + 2  # +2 for one blank row
                 worksheet.cell(row=xirr_row, column=1, value="Portfolio XIRR")
                 
+                # Add XIRR formula that uses transaction dates and amounts
+                # Find the N.Amt column (usually column 11)
+                n_amt_col = None
+                for col_idx, col_name in enumerate(df.columns, 1):
+                    if col_name == "N.Amt":
+                        n_amt_col = col_idx
+                        break
+                
+                if n_amt_col:
+                    # Create XIRR formula referencing dates (column 3) and N.Amt (column n_amt_col)
+                    # Transaction rows start from row 2 (after header) and go through the Portfolio_Value row
+                    date_range = f"C2:C{portfolio_value_row}"
+                    amount_range = f"{chr(64+n_amt_col)}2:{chr(64+n_amt_col)}{portfolio_value_row}"
+                    # Fix: correct parameter order - values first, then dates
+                    xirr_formula = f"=XIRR({amount_range},{date_range})"
+                    worksheet.cell(row=xirr_row, column=2, value=xirr_formula)
+                
                 # Add Portfolio XIRR Percentage row
                 xirr_pct_row = xirr_row + 1
                 worksheet.cell(row=xirr_pct_row, column=1, value="Portfolio XIRR Percentage")
