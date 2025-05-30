@@ -26,11 +26,11 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller cryptography pycparser cffi
+        pip install pyinstaller cryptography pycparser cffi pywin32
     
     - name: Build with PyInstaller directly
       run: |
-        pyinstaller --onefile --windowed --name PDFTableExtractor pdf_to_excel_app.py --exclude-module cryptography
+        pyinstaller --onefile --windowed --name PDFTableExtractor pdf_to_excel_app.py --hidden-import=cryptography
     
     - name: Debug directory structure
       run: |
