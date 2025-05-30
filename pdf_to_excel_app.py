@@ -191,14 +191,8 @@ class PDFToExcelApp:
                     portfolio_summary_row = row
                     break
             
-            # If we found Portfolio_Value row, update its formulas
-            if portfolio_value_row:
-                # Set TODAY() formula in Date column (column 3)
-                sheet.cell(row=portfolio_value_row, column=3).value = "=TODAY()"
-                # Clear any value that might be in column 2
-                sheet.cell(row=portfolio_value_row, column=2).value = None
-            
-            # Now process the Portfolio Summary section
+            # Now process the Portfolio Summary section - no need to fix TODAY() formula
+            # as it's already correctly placed in column 3 by extract_transactions_simple.py
             if portfolio_summary_row:
                 # Find header row (should be portfolio_summary_row + 1)
                 header_row = portfolio_summary_row + 1
@@ -212,7 +206,7 @@ class PDFToExcelApp:
                     while last_row <= sheet.max_row and sheet.cell(row=last_row, column=1).value not in (None, "TOTAL"):
                         # Add GOOGLEFINANCE formula for each security
                         symbol = sheet.cell(row=last_row, column=1).value
-                        if symbol and symbol != "Unknown":
+                        if symbol:  # No need to check for Unknown as it's already fixed
                             sheet.cell(row=last_row, column=3).value = f'=GOOGLEFINANCE("{symbol}")'
                         
                         # Add Value formula (quantity × price)
@@ -280,10 +274,8 @@ class PDFToExcelApp:
                     base_name = os.path.splitext(os.path.basename(pdf_path))[0]
                     actual_output_path = f"{base_name}_extraction.xlsx"
                 
-                # First fix missing Scrip_Symbol values in the transaction data
-                self.fix_missing_scrip_symbols(actual_output_path)
-                
-                # Then apply portfolio formulas and update TODAY() and N.Amt references
+                # Skip fix_missing_scrip_symbols since it's now handled in extract_transactions_simple.py
+                # Just apply portfolio formulas to ensure GOOGLEFINANCE and other calculations work
                 self.fix_portfolio_formulas(actual_output_path)
             
             # Update GUI with results

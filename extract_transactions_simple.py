@@ -177,8 +177,17 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
             
             df['Scrip_Symbol'] = df['Scrip_Symbol'].apply(clean_scrip_symbol)
         
-        # Before creating portfolio summary, remove rows with very few filled columns
-        # This will prevent empty lines after the transaction table
+        # Before creating portfolio summary, fix Unknown scrip symbols by propagating the last valid symbol
+        if 'Scrip_Symbol' in df.columns:
+            last_valid_symbol = None
+            for idx, row in df.iterrows():
+                current = row['Scrip_Symbol']
+                if current != 'Unknown' and pd.notna(current) and str(current).strip():
+                    last_valid_symbol = current
+                elif last_valid_symbol is not None:
+                    df.at[idx, 'Scrip_Symbol'] = last_valid_symbol
+        
+        # Remove rows with very few filled columns - this will prevent empty lines after the transaction table
         if 'N.Qty' in df.columns:
             # Count non-empty cells in each row
             df['filled_columns'] = df.apply(lambda row: sum(pd.notna(val) and str(val).strip() != '' for val in row), axis=1)
@@ -191,7 +200,7 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
         # Create a summary portfolio dataframe
         portfolio_df = None
         if 'Scrip_Symbol' in df.columns and 'N.Qty' in df.columns:
-            # Group by Scrip_Symbol and sum N.Qty
+            # Group by Scrip_Symbol and sum N.Qty - no Unknown symbols should exist at this point
             portfolio_df = df.groupby('Scrip_Symbol')['N.Qty'].sum().reset_index()
             # Add Current_Price column (will add formula later)
             portfolio_df['Current_Price'] = ''
@@ -207,13 +216,25 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
             # Get worksheet reference
             worksheet = writer.sheets['Transactions']
             
-            # Add Portfolio_Value row right after transactions table
-            portfolio_value_row = len(df) + 1
+            # Find the actual last row with transaction data by examining the worksheet
+            last_transaction_row = 0
+            for row in range(len(df), 0, -1):
+                # Check if row has content in key columns
+                row_in_sheet = row + 1  # +1 for header
+                if worksheet.cell(row=row_in_sheet, column=1).value:  # Check Scrip_Symbol
+                    last_transaction_row = row_in_sheet
+                    break
             
-            # Add Portfolio Value row (will be updated with proper formula references later)
+            if last_transaction_row == 0:
+                # Fallback: use length + header
+                last_transaction_row = len(df) + 1
+            
+            # Add Portfolio_Value row after the last actual transaction row
+            portfolio_value_row = last_transaction_row + 1
+            
+            # Add Portfolio Value row with TODAY() in column 3 (Date)
             worksheet.cell(row=portfolio_value_row, column=1, value="Portfolio_Value")
-            worksheet.cell(row=portfolio_value_row, column=2, value="=TODAY()")  # TODAY() in Date column
-            # N.Amt cell will be filled after creating the portfolio summary
+            worksheet.cell(row=portfolio_value_row, column=3, value="=TODAY()")  # TODAY() in Date column (3)
             
             # If portfolio data exists, add it below with a 1-row gap
             if portfolio_df is not None:
