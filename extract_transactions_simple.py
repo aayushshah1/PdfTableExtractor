@@ -306,9 +306,21 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                     # Write N.Qty
                     worksheet.cell(row=row_idx, column=3, value=row['N.Qty'])
                     
-                    # Simplify the GOOGLEFINANCE formula temporarily
+                    # Enhanced GOOGLEFINANCE formula with time-based logic and NSE/BOM fallback
                     nse_ref = worksheet.cell(row=row_idx, column=2).coordinate
-                    price_formula = f'=INDEX(GOOGLEFINANCE({nse_ref}, "close", WORKDAY(TODAY(), -1), WORKDAY(TODAY(), -1)), 2, 2)'
+                    bom_ref = worksheet.cell(row=row_idx, column=1).coordinate
+                    
+                    # Time-based formula with NSE/BOM fallback
+                    price_formula = f'''=IFERROR(
+IF(TIME(HOUR(NOW()),MINUTE(NOW()),0)>TIME(15,30,0),
+INDEX(GOOGLEFINANCE({nse_ref},"close",WORKDAY(TODAY(),0),WORKDAY(TODAY(),0)),2,2),
+INDEX(GOOGLEFINANCE({nse_ref},"close",WORKDAY(TODAY(),-1),WORKDAY(TODAY(),-1)),2,2)),
+IFERROR(
+IF(TIME(HOUR(NOW()),MINUTE(NOW()),0)>TIME(15,30,0),
+INDEX(GOOGLEFINANCE({bom_ref},"close",WORKDAY(TODAY(),0),WORKDAY(TODAY(),0)),2,2),
+INDEX(GOOGLEFINANCE({bom_ref},"close",WORKDAY(TODAY(),-1),WORKDAY(TODAY(),-1)),2,2)),
+"Add manually"))'''
+                    
                     worksheet.cell(row=row_idx, column=4, value=price_formula)
                     
                     # Add Value formula (quantity × price)
@@ -354,9 +366,9 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                         break
                 
                 if n_amt_col:
-                    # Create XIRR formula referencing dates (column 3) and N.Amt (column n_amt_col)
+                    # Create XIRR formula referencing dates (column 4) and N.Amt (column n_amt_col)
                     # Transaction rows start from row 2 (after header) and go through the Portfolio_Value row
-                    date_range = f"C2:C{portfolio_value_row}"
+                    date_range = f"D2:D{portfolio_value_row}"
                     amount_range = f"{chr(64+n_amt_col)}2:{chr(64+n_amt_col)}{portfolio_value_row}"
                     # Fix: correct parameter order - values first, then dates
                     xirr_formula = f"=XIRR({amount_range},{date_range})"
