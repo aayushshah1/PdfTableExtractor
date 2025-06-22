@@ -51,11 +51,11 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                             if col is not None and col.strip():  # Only add non-empty columns
                                 column_names.append(col)
                         
-                        # Add "Scrip_Symbol" as the first column name
+                        # Add "Scrip_Symbol" as the first column name (KEEP ORIGINAL LOGIC)
                         column_names.insert(0, "Scrip_Symbol")
                         
                         print(f"Using column names: {column_names}")
-                        
+
                         # Skip the header row for the first table
                         start_row = 1
                     else:
@@ -64,12 +64,22 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                     
                     # Process rows
                     current_scrip_symbol = None  # To track the current script symbol
+                    current_bom_id = None  # To track the current BOM ID
                     
                     for row_idx, row in enumerate(table[start_row:], start_row):
                         # Check if this is a Scrip_Symbol row
                         if row and len(row) > 2 and row[0] == 'Scrip_Symbol :' and row[2] is not None:
-                            # Extract the scrip symbol (e.g., "500116 IDBI - MITHIL DEEPAK KOTWAL")
-                            current_scrip_symbol = row[2]
+                            # Extract the scrip symbol and BOM ID (e.g., "500116 IDBI - MITHIL DEEPAK KOTWAL")
+                            full_symbol = row[2]
+                            
+                            # Extract BOM ID (first set of digits)
+                            bom_match = re.match(r'^(\d+)', full_symbol.strip())
+                            if bom_match:
+                                current_bom_id = bom_match.group(1)
+                            else:
+                                current_bom_id = None
+                            
+                            current_scrip_symbol = full_symbol
                             continue  # Skip this row from the final output
                         
                         # Check if this is a row with more than 2 columns of data (transaction row)
@@ -86,10 +96,11 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                             
                             if current_scrip_symbol and filled_cols_count >= 8:
                                 transaction[column_names[0]] = current_scrip_symbol
+                                # REMOVE BOM_ID handling here - keep original logic
                             else:
                                 transaction[column_names[0]] = "Unknown"
-                            
-                            # Map the rest of the columns
+
+                            # Map the rest of the columns (KEEP ORIGINAL LOGIC)
                             col_index = 1  # Start from 1 since we've already added Scrip_Symbol
                             for cell in row:
                                 if cell is not None and col_index < len(column_names):
@@ -153,30 +164,14 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
         if 'Company' in df.columns and 'Date' in df.columns:
             df = df[~((df['Company'] == 'Company') & (df['Date'] == 'Date'))]
         
-        # 5. Clean up the Scrip_Symbol column - remove the "Scrip_Symbol :" prefix if present
-        # and extract just the company name without numbers and client name
-        if 'Scrip_Symbol' in df.columns:
-            df['Scrip_Symbol'] = df['Scrip_Symbol'].astype(str)
-            
-            def clean_scrip_symbol(symbol):
-                # First remove any "Scrip_Symbol :" prefix
-                symbol = symbol.replace('Scrip_Symbol :', '').strip()
-                
-                # If there's a dash, take only the part before it
-                if ' - ' in symbol:
-                    symbol = symbol.split(' - ')[0].strip()
-                
-                # Handle special case like "BSE BSE"
-                if symbol.startswith('BSE '):
-                    return 'BSE'
-                
-                # Remove leading numbers and spaces
-                symbol = re.sub(r'^\d+\s+', '', symbol)
-                
-                return symbol
-            
-            df['Scrip_Symbol'] = df['Scrip_Symbol'].apply(clean_scrip_symbol)
-        
+        # REMOVE dynamic BOM_ID column creation
+        # if 'BOM_ID' not in df.columns:
+        #     df.insert(1, 'BOM_ID', None)
+
+        # REMOVE dynamic column_names update
+        # if 'BOM_ID' not in column_names:
+        #     column_names.insert(1, 'BOM_ID')
+
         # Before creating portfolio summary, fix Unknown scrip symbols by propagating the last valid symbol
         if 'Scrip_Symbol' in df.columns:
             last_valid_symbol = None
@@ -186,7 +181,48 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                     last_valid_symbol = current
                 elif last_valid_symbol is not None:
                     df.at[idx, 'Scrip_Symbol'] = last_valid_symbol
-        
+
+        # 5. Clean up the Scrip_Symbol column and extract BOM IDs (ENHANCED LOGIC)
+        if 'Scrip_Symbol' in df.columns:
+            df['Scrip_Symbol'] = df['Scrip_Symbol'].astype(str)
+            
+            def clean_scrip_symbol_and_extract_bom(symbol):
+                # First remove any "Scrip_Symbol :" prefix
+                symbol = symbol.replace('Scrip_Symbol :', '').strip()
+                
+                # Extract BOM ID if present (first set of digits before space)
+                bom_id = None
+                bom_match = re.match(r'^(\d+)', symbol)
+                if bom_match:
+                    bom_id = bom_match.group(1)  # Extract "544325"
+                    # Remove the BOM ID from symbol
+                    symbol = re.sub(r'^\d+\s*', '', symbol)  # Remove "544325 "
+                
+                # If there's a dash, take only the part before it
+                if ' - ' in symbol:
+                    symbol = symbol.split(' - ')[0].strip()  # "ITCHOTELS - NAME" -> "ITCHOTELS"
+                
+                # Handle duplicate symbols (e.g., "CDSL CDSL" -> "CDSL")
+                words = symbol.split()
+                if len(words) == 2 and words[0] == words[1]:
+                    symbol = words[0]
+                elif len(words) > 1:
+                    # Remove spaces for single-word symbols
+                    symbol = ''.join(words) if all(word.isalpha() for word in words) else symbol
+                
+                # Handle special cases
+                if symbol.startswith('BSE '):
+                    symbol = 'BSE'
+                
+                return symbol, bom_id
+            
+            # Apply cleaning and BOM extraction
+            cleaned_data = df['Scrip_Symbol'].apply(clean_scrip_symbol_and_extract_bom)
+            df['Scrip_Symbol'] = [item[0] for item in cleaned_data]
+            
+            # ADD BOM_ID column with extracted values
+            df.insert(1, 'BOM_ID', [item[1] for item in cleaned_data])
+
         # Remove rows with very few filled columns - this will prevent empty lines after the transaction table
         if 'N.Qty' in df.columns:
             # Count non-empty cells in each row
@@ -200,8 +236,12 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
         # Create a summary portfolio dataframe
         portfolio_df = None
         if 'Scrip_Symbol' in df.columns and 'N.Qty' in df.columns:
-            # Group by Scrip_Symbol and sum N.Qty - no Unknown symbols should exist at this point
-            portfolio_df = df.groupby('Scrip_Symbol')['N.Qty'].sum().reset_index()
+            # Group by Scrip_Symbol and sum N.Qty, also get the first BOM_ID for each symbol
+            portfolio_df = df.groupby('Scrip_Symbol').agg({
+                'N.Qty': 'sum',
+                'BOM_ID': 'first'  # Take first BOM_ID for each symbol
+            }).reset_index()
+
             # Add Current_Price column (will add formula later)
             portfolio_df['Current_Price'] = ''
             # Add Value column (will add formula later)
@@ -245,45 +285,50 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
                 worksheet.cell(row=portfolio_start_row, column=1, value="PORTFOLIO SUMMARY")
                 
                 # Write column headers for the portfolio section
-                worksheet.cell(row=portfolio_start_row + 1, column=1, value="Scrip_Symbol")
-                worksheet.cell(row=portfolio_start_row + 1, column=2, value="Total_Quantity")
-                worksheet.cell(row=portfolio_start_row + 1, column=3, value="Current_Price")
-                worksheet.cell(row=portfolio_start_row + 1, column=4, value="Value")
+                worksheet.cell(row=portfolio_start_row + 1, column=1, value="BOM_ID")
+                worksheet.cell(row=portfolio_start_row + 1, column=2, value="Scrip_Symbol")
+                worksheet.cell(row=portfolio_start_row + 1, column=3, value="Total_Quantity")
+                worksheet.cell(row=portfolio_start_row + 1, column=4, value="Current_Price")
+                worksheet.cell(row=portfolio_start_row + 1, column=5, value="Value")
                 
                 # Write portfolio data
                 for i, row in portfolio_df.iterrows():
                     row_idx = portfolio_start_row + 2 + i  # +2 for portfolio header and column headers
                     
-                    # Write Scrip_Symbol
-                    worksheet.cell(row=row_idx, column=1, value=row['Scrip_Symbol'])
+                    # Format BOM ID with BOM: prefix if available
+                    bom_formatted = f"BOM:{row['BOM_ID']}" if pd.notna(row['BOM_ID']) else ""
+                    worksheet.cell(row=row_idx, column=1, value=bom_formatted)
+                    
+                    # Format Scrip_Symbol with NSE: prefix
+                    nse_symbol = f"NSE:{row['Scrip_Symbol']}"
+                    worksheet.cell(row=row_idx, column=2, value=nse_symbol)
                     
                     # Write N.Qty
-                    qty_cell = worksheet.cell(row=row_idx, column=2, value=row['N.Qty'])
+                    worksheet.cell(row=row_idx, column=3, value=row['N.Qty'])
                     
-                    # Add GOOGLEFINANCE formula for Current_Price
-                    symbol = row["Scrip_Symbol"]
-                    price_cell = worksheet.cell(row=row_idx, column=3)
-                    symbol_ref = worksheet.cell(row=row_idx, column=1).coordinate
-                    price_cell.value = f'=INDEX(GOOGLEFINANCE({symbol_ref}, "close", TODAY()-1, TODAY()-1), 2, 2)'
+                    # Simplify the GOOGLEFINANCE formula temporarily
+                    nse_ref = worksheet.cell(row=row_idx, column=2).coordinate
+                    price_formula = f'=INDEX(GOOGLEFINANCE({nse_ref}, "close", WORKDAY(TODAY(), -1), WORKDAY(TODAY(), -1)), 2, 2)'
+                    worksheet.cell(row=row_idx, column=4, value=price_formula)
                     
-                    # Add Value formula (quantity * price)
-                    qty_ref = worksheet.cell(row=row_idx, column=2).coordinate
-                    price_ref = worksheet.cell(row=row_idx, column=3).coordinate
-                    worksheet.cell(row=row_idx, column=4, value=f"={qty_ref}*{price_ref}")
+                    # Add Value formula (quantity × price)
+                    qty_ref = worksheet.cell(row=row_idx, column=3).coordinate
+                    price_ref = worksheet.cell(row=row_idx, column=4).coordinate
+                    worksheet.cell(row=row_idx, column=5, value=f"={qty_ref}*{price_ref}")
                 
                 # Add TOTAL row
                 total_row = portfolio_start_row + 2 + len(portfolio_df)
-                worksheet.cell(row=total_row, column=1, value="TOTAL")
+                worksheet.cell(row=total_row, column=2, value="TOTAL")
                 
                 # Add SUM formulas for the Total_Quantity and Value columns
-                first_qty_cell = worksheet.cell(row=portfolio_start_row+2, column=2).coordinate
-                last_qty_cell = worksheet.cell(row=total_row-1, column=2).coordinate
-                worksheet.cell(row=total_row, column=2, value=f"=SUM({first_qty_cell}:{last_qty_cell})")
+                first_qty_cell = worksheet.cell(row=portfolio_start_row+2, column=3).coordinate
+                last_qty_cell = worksheet.cell(row=total_row-1, column=3).coordinate
+                worksheet.cell(row=total_row, column=3, value=f"=SUM({first_qty_cell}:{last_qty_cell})")
                 
                 # Add SUM formula for the Value column
-                first_value_cell = worksheet.cell(row=portfolio_start_row+2, column=4).coordinate
-                last_value_cell = worksheet.cell(row=total_row-1, column=4).coordinate
-                total_value_cell = worksheet.cell(row=total_row, column=4, value=f"=SUM({first_value_cell}:{last_value_cell})")
+                first_value_cell = worksheet.cell(row=portfolio_start_row+2, column=5).coordinate
+                last_value_cell = worksheet.cell(row=total_row-1, column=5).coordinate
+                total_value_cell = worksheet.cell(row=total_row, column=5, value=f"=SUM({first_value_cell}:{last_value_cell})")
                 
                 # Now update the Portfolio_Value row's N.Amt cell with reference to total portfolio value
                 total_value_ref = total_value_cell.coordinate
@@ -333,6 +378,29 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
     else:
         print("No transaction data found in the PDF.")
         return None
+
+# if __name__ == "__main__":
+#     if len(sys.argv) > 1:
+#         pdf_path = sys.argv[1]
+#     else:
+#         pdf_path = input("Enter path to PDF file: ")
+        
+#         if not pdf_path:
+#             pdf_path = "Data/Main.PDF"  # Default path
+    
+#     extract_transactions_simple(pdf_path)
+        
+#         print(f"\nSuccessfully extracted {len(df)} rows and saved to {output_excel_path}")
+        
+#         # Show sample of extracted data
+#         if len(df) > 0:
+#             print("\nSample of extracted data:")
+#             print(df.head().to_string())
+        
+#         return df
+#     else:
+#         print("No transaction data found in the PDF.")
+#         return None
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:

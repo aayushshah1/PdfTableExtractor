@@ -126,50 +126,6 @@ class PDFToExcelApp:
         except Exception as e:
             messagebox.showerror("Error", f"Could not open the file: {e}")
 
-    def fix_missing_scrip_symbols(self, output_path):
-        """Fix any missing scrip symbols in the extracted data"""
-        try:
-            import pandas as pd
-            
-            # Read the Excel file directly
-            df = pd.read_excel(output_path)
-            
-            # Check if the DataFrame has a Scrip_Symbol column and needs fixing
-            if 'Scrip_Symbol' in df.columns:
-                # Find the portfolio section to avoid changing it
-                portfolio_start_idx = None
-                portfolio_value_idx = None
-                
-                for idx, row in df.iterrows():
-                    if str(row.get('Scrip_Symbol', '')) == 'Portfolio_Value':
-                        portfolio_value_idx = idx
-                        break
-                    elif str(row.get('Scrip_Symbol', '')) == 'PORTFOLIO SUMMARY':
-                        portfolio_start_idx = idx
-                        break
-                
-                # Replace 'Unknown' with the last non-Unknown value only in transaction section
-                last_valid_symbol = None
-                for idx, row in df.iterrows():
-                    # Stop at the portfolio or portfolio value section
-                    if (portfolio_start_idx is not None and idx >= portfolio_start_idx) or \
-                       (portfolio_value_idx is not None and idx >= portfolio_value_idx):
-                        break
-                    
-                    current = row['Scrip_Symbol']
-                    if current != 'Unknown' and pd.notna(current) and str(current).strip():
-                        last_valid_symbol = current
-                    elif last_valid_symbol is not None:
-                        df.at[idx, 'Scrip_Symbol'] = last_valid_symbol
-                
-                # Save the fixed DataFrame back to Excel, preserving all rows
-                with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-                    df.to_excel(writer, index=False)
-                
-                print(f"Fixed missing Scrip_Symbol values in {output_path}")
-        except Exception as e:
-            print(f"Error fixing Scrip_Symbol values: {e}")
-    
     def fix_portfolio_formulas(self, output_path):
         """Fix and add formulas to the portfolio summary section"""
         try:
@@ -191,48 +147,40 @@ class PDFToExcelApp:
                     portfolio_summary_row = row
                     break
             
-            # Now process the Portfolio Summary section - no need to fix TODAY() formula
-            # as it's already correctly placed in column 3 by extract_transactions_simple.py
+            # Process the Portfolio Summary section
             if portfolio_summary_row:
                 # Find header row (should be portfolio_summary_row + 1)
                 header_row = portfolio_summary_row + 1
                 
-                # Verify the headers exist
-                if (sheet.cell(row=header_row, column=1).value == "Scrip_Symbol" and
-                    sheet.cell(row=header_row, column=2).value == "Total_Quantity"):
+                # Verify the headers exist (updated for new column structure)
+                if (sheet.cell(row=header_row, column=1).value == "BOM_ID" and
+                    sheet.cell(row=header_row, column=2).value == "Scrip_Symbol"):
                     
                     # Process each security row
                     last_row = header_row + 1
-                    while last_row <= sheet.max_row and sheet.cell(row=last_row, column=1).value not in (None, "TOTAL"):
-                        # Add GOOGLEFINANCE formula for each security
-                        symbol = sheet.cell(row=last_row, column=1).value
-                        if symbol:  # No need to check for Unknown as it's already fixed
-                            symbol_ref = sheet.cell(row=last_row, column=1).coordinate
-                            sheet.cell(row=last_row, column=3).value = f'=INDEX(GOOGLEFINANCE({symbol_ref}, "close", TODAY()-1, TODAY()-1), 2, 2)'
-                        
-                        # Add Value formula (quantity × price)
-                        qty_ref = sheet.cell(row=last_row, column=2).coordinate
-                        price_ref = sheet.cell(row=last_row, column=3).coordinate
-                        sheet.cell(row=last_row, column=4).value = f"={qty_ref}*{price_ref}"
+                    while last_row <= sheet.max_row and sheet.cell(row=last_row, column=2).value not in (None, "TOTAL"):
+                        # The enhanced GOOGLEFINANCE formula is already set during extraction
+                        # Just ensure Value formula is correct
+                        qty_ref = sheet.cell(row=last_row, column=3).coordinate
+                        price_ref = sheet.cell(row=last_row, column=4).coordinate
+                        sheet.cell(row=last_row, column=5).value = f"={qty_ref}*{price_ref}"
                         
                         last_row += 1
                     
                     # Process TOTAL row if it exists
                     total_row = last_row
-                    if total_row <= sheet.max_row and sheet.cell(row=total_row, column=1).value == "TOTAL":
-                        # Add SUM formula for Total_Quantity
-                        first_qty_cell = sheet.cell(row=header_row+1, column=2).coordinate
-                        last_qty_cell = sheet.cell(row=total_row-1, column=2).coordinate
-                        sheet.cell(row=total_row, column=2).value = f"=SUM({first_qty_cell}:{last_qty_cell})"
+                    if total_row <= sheet.max_row and sheet.cell(row=total_row, column=2).value == "TOTAL":
+                        # Update SUM formulas for new column positions
+                        first_qty_cell = sheet.cell(row=header_row+1, column=3).coordinate
+                        last_qty_cell = sheet.cell(row=total_row-1, column=3).coordinate
+                        sheet.cell(row=total_row, column=3).value = f"=SUM({first_qty_cell}:{last_qty_cell})"
                         
-                        # Add SUM formula for Value
-                        first_value_cell = sheet.cell(row=header_row+1, column=4).coordinate
-                        last_value_cell = sheet.cell(row=total_row-1, column=4).coordinate
-                        sheet.cell(row=total_row, column=4).value = f"=SUM({first_value_cell}:{last_value_cell})"
+                        first_value_cell = sheet.cell(row=header_row+1, column=5).coordinate
+                        last_value_cell = sheet.cell(row=total_row-1, column=5).coordinate
+                        sheet.cell(row=total_row, column=5).value = f"=SUM({first_value_cell}:{last_value_cell})"
                         
-                        # Link Portfolio_Value to the total value
+                        # Link Portfolio_Value to the total value (column 5 now)
                         if portfolio_value_row:
-                            # Get the N.Amt column (usually column 11)
                             n_amt_col = None
                             for col in range(1, sheet.max_column + 1):
                                 if sheet.cell(row=1, column=col).value == "N.Amt":
@@ -240,9 +188,9 @@ class PDFToExcelApp:
                                     break
                             
                             if n_amt_col:
-                                total_value_ref = sheet.cell(row=total_row, column=4).coordinate
+                                total_value_ref = sheet.cell(row=total_row, column=5).coordinate
                                 sheet.cell(row=portfolio_value_row, column=n_amt_col).value = f"={total_value_ref}"
-                        
+
                         # Add Portfolio XIRR row after a blank row
                         xirr_row = total_row + 2  # +2 for one blank row
                         sheet.cell(row=xirr_row, column=1).value = "Portfolio XIRR"
