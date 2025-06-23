@@ -41,43 +41,146 @@ jobs:
         echo "Build directory:"
         dir build || echo "No build directory"
     
+    - name: Decode certificate and sign executable
+      if: github.event_name != 'pull_request' && github.repository == 'aayushshah1/PdfTableExtractor'
+      shell: cmd
+      run: |
+        echo Decoding certificate...
+        if "%{{ secrets.CERT_BASE64 }}"=="" (
+          echo ERROR: CERT_BASE64 secret not found
+          exit /b 1
+        )
+        echo ${{ secrets.CERT_BASE64 }} > cert_base64.txt
+        certutil -decode cert_base64.txt cert.pfx
+        if %ERRORLEVEL% neq 0 (
+          echo ERROR: Failed to decode certificate
+          del cert_base64.txt 2>nul
+          exit /b 1
+        )
+        
+        echo Finding signtool.exe...
+        where signtool.exe || echo "signtool not in PATH, searching..."
+        
+        REM Try common locations for signtool
+        set "SIGNTOOL_PATH="
+        if exist "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" (
+          for /f "delims=" %%i in ('dir "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" /s /b 2^>nul ^| sort /r') do (
+            set "SIGNTOOL_PATH=%%i"
+            goto :found
+          )
+        )
+        if exist "C:\Program Files\Microsoft SDKs\Windows\*\bin\signtool.exe" (
+          for /f "delims=" %%i in ('dir "C:\Program Files\Microsoft SDKs\Windows\*\bin\signtool.exe" /s /b 2^>nul ^| sort /r') do (
+            set "SIGNTOOL_PATH=%%i"
+            goto :found
+          )
+        )
+        
+        :found
+        if "%SIGNTOOL_PATH%"=="" (
+          echo ERROR: signtool.exe not found
+          del cert.pfx cert_base64.txt 2>nul
+          exit /b 1
+        )
+        
+        echo Found signtool at: %SIGNTOOL_PATH%
+        
+        echo Signing executable...
+        "%SIGNTOOL_PATH%" sign ^
+          /f cert.pfx ^
+          /p "${{ secrets.CERT_PASSWORD }}" ^
+          /tr http://timestamp.digicert.com ^
+          /td sha256 ^
+          /fd sha256 ^
+          /d "PDF Table Extractor" ^
+          /du "https://github.com/aayushshah1/PdfTableExtractor" ^
+          dist\PDFTableExtractor.exe
+        
+        if %ERRORLEVEL% neq 0 (
+          echo ERROR: Code signing failed with error %ERRORLEVEL%
+          del cert.pfx cert_base64.txt 2>nul
+          exit /b 1
+        )
+        
+        echo Verifying signature...
+        "%SIGNTOOL_PATH%" verify /pa /v dist\PDFTableExtractor.exe
+        if %ERRORLEVEL% neq 0 (
+          echo WARNING: Signature verification failed, but continuing...
+        )
+        
+        echo Cleaning up certificate files...
+        del cert.pfx cert_base64.txt 2>nul
+        echo Code signing completed successfully
+    
     - name: Create distribution package
       shell: cmd
       run: |
-        mkdir dist\PDFTableExtractor
-        if exist dist\PDFTableExtractor.exe (
-          copy dist\PDFTableExtractor.exe dist\PDFTableExtractor\
-          
-          echo Creating README file...
-          echo PDF Table Extractor > dist\PDFTableExtractor\README.txt
-          echo =================== >> dist\PDFTableExtractor\README.txt
-          echo. >> dist\PDFTableExtractor\README.txt
-          echo 1. Double-click PDFTableExtractor.exe to start the application >> dist\PDFTableExtractor\README.txt
-          echo 2. Click "Browse" to select your PDF file >> dist\PDFTableExtractor\README.txt
-          echo 3. Click "Convert to Excel" to process the PDF >> dist\PDFTableExtractor\README.txt
-          echo 4. When complete, you can open the Excel file directly >> dist\PDFTableExtractor\README.txt
-          echo. >> dist\PDFTableExtractor\README.txt
-          echo For more information, visit: https://github.com/aayushshah1/PDFTableExtractor >> dist\PDFTableExtractor\README.txt
-          
-          echo Creating Zip file...
-          powershell -Command "Compress-Archive -Path 'dist\PDFTableExtractor\*' -DestinationPath 'dist\PDFTableExtractor.zip' -Force"
-          echo Zip file created at dist\PDFTableExtractor.zip
-        ) else (
+        if not exist dist\PDFTableExtractor.exe (
           echo ERROR: PDFTableExtractor.exe not found in dist directory
+          exit /b 1
+        )
+        
+        mkdir dist\PDFTableExtractor 2>nul
+        copy dist\PDFTableExtractor.exe dist\PDFTableExtractor\
+        
+        echo Creating README file...
+        echo PDF Table Extractor > dist\PDFTableExtractor\README.txt
+        echo =================== >> dist\PDFTableExtractor\README.txt
+        echo. >> dist\PDFTableExtractor\README.txt
+        echo 1. Double-click PDFTableExtractor.exe to start the application >> dist\PDFTableExtractor\README.txt
+        echo 2. Click "Browse" to select your PDF file >> dist\PDFTableExtractor\README.txt
+        echo 3. Click "Convert to Excel" to process the PDF >> dist\PDFTableExtractor\README.txt
+        echo 4. When complete, you can open the Excel file directly >> dist\PDFTableExtractor\README.txt
+        echo. >> dist\PDFTableExtractor\README.txt
+        echo Digitally signed by Ask Automations >> dist\PDFTableExtractor\README.txt
+        echo Author: Aayush Shah >> dist\PDFTableExtractor\README.txt
+        echo Contact: askautomation1@gmail.com >> dist\PDFTableExtractor\README.txt
+        echo. >> dist\PDFTableExtractor\README.txt
+        echo For more information, visit: https://github.com/aayushshah1/PdfTableExtractor >> dist\PDFTableExtractor\README.txt
+        
+        echo Creating Zip file...
+        powershell -Command "Compress-Archive -Path 'dist\PDFTableExtractor\*' -DestinationPath 'dist\PDFTableExtractor.zip' -Force"
+        if exist dist\PDFTableExtractor.zip (
+          echo Zip file created successfully at dist\PDFTableExtractor.zip
+        ) else (
+          echo ERROR: Failed to create zip file
           exit /b 1
         )
     
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: PDFTableExtractor
+        name: PDFTableExtractor-${{ github.sha }}
         path: dist/PDFTableExtractor.zip
         if-no-files-found: error
+        retention-days: 90
     
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: dist/PDFTableExtractor.zip
+        name: PDF Table Extractor ${{ github.ref_name }}
+        body: |
+          ## PDF Table Extractor ${{ github.ref_name }}
+          
+          **Digitally signed Windows executable** for extracting transaction data from PDF files.
+          
+          ### Features:
+          - Extract transaction tables from PDF files
+          - Generate Excel output with portfolio summary
+          - GOOGLEFINANCE formulas for real-time stock prices
+          - XIRR calculation for portfolio performance
+          
+          ### Security:
+          - Digitally signed by Ask Automations
+          - Windows may show a security warning initially (normal for self-signed certificates)
+          
+          ### Usage:
+          1. Download and extract `PDFTableExtractor.zip`
+          2. Double-click `PDFTableExtractor.exe` to start
+          3. Select your PDF file and convert to Excel
+          
+          Built from commit: ${{ github.sha }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

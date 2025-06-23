@@ -8,8 +8,6 @@ This guide provides detailed instructions for setting up and running PDF Table E
 
 1. **Download the application**
    - Download the `PDFTableExtractor.zip` file from the [GitHub releases page](https://github.com/aayushshah1/PdfTableExtractor/releases)
-   - Right-click on the downloaded zip file and select "Extract All..."
-   - Choose a location where you want to extract the files (e.g., your Desktop)
 
 2. **Run the application**
    - Open the extracted folder
@@ -31,7 +29,6 @@ This guide provides detailed instructions for setting up and running PDF Table E
 
 2. **Download the application source code**
    - Download the ZIP from [GitHub repository](https://github.com/aayushshah1/PdfTableExtractor)
-   - Extract it to a location of your choice (e.g., `C:\PDFTableExtractor`)
 
 3. **Run the application**
    - Double-click on `run_app.bat` in the extracted folder
@@ -39,6 +36,10 @@ This guide provides detailed instructions for setting up and running PDF Table E
      - Create a virtual environment
      - Install all required dependencies
      - Launch the application
+
+3. **For IT administrators:**
+   - The application can be whitelisted in Windows Defender
+   - Source code is available for security review at: https://github.com/aayushshah1/PdfTableExtractor
 
 ### Option 3: Manual Installation (macOS)
 
@@ -170,4 +171,3 @@ If you need to create your own Windows executable:
 
 If you continue to experience issues:
 - Open an issue on the [GitHub repository](https://github.com/aayushshah1/PdfTableExtractor/issues)
-- Include detailed information about your system and the error messages you're seeing
