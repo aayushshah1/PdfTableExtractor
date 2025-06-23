@@ -41,6 +41,41 @@ jobs:
         echo "Build directory:"
         dir build || echo "No build directory"
     
+    - name: Install Windows SDK for signtool
+      if: github.event_name != 'pull_request' && github.repository == 'aayushshah1/PdfTableExtractor'
+      shell: powershell
+      run: |
+        Write-Host "Installing Windows SDK..."
+        # Download and install Windows SDK
+        $sdkUrl = "https://go.microsoft.com/fwlink/p/?linkid=2196241"
+        $installerPath = "$env:TEMP\winsdksetup.exe"
+        
+        # Download SDK installer
+        Invoke-WebRequest -Uri $sdkUrl -OutFile $installerPath
+        
+        # Install only the necessary components (signing tools)
+        Start-Process -FilePath $installerPath -ArgumentList "/quiet", "/norestart", "/features", "OptionId.SigningTools" -Wait
+        
+        # Verify installation
+        $signtoolPaths = @(
+          "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe",
+          "${env:ProgramFiles}\Windows Kits\10\bin\*\x64\signtool.exe"
+        )
+        
+        foreach ($path in $signtoolPaths) {
+          $found = Get-ChildItem -Path $path -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($found) {
+            Write-Host "Found signtool at: $($found.FullName)"
+            echo "SIGNTOOL_PATH=$($found.FullName)" >> $env:GITHUB_ENV
+            break
+          }
+        }
+        
+        if (-not $env:SIGNTOOL_PATH) {
+          Write-Error "signtool.exe still not found after SDK installation"
+          exit 1
+        }
+    
     - name: Decode certificate and sign executable
       if: github.event_name != 'pull_request' && github.repository == 'aayushshah1/PdfTableExtractor'
       shell: cmd
@@ -58,32 +93,7 @@ jobs:
           exit /b 1
         )
         
-        echo Finding signtool.exe...
-        where signtool.exe || echo "signtool not in PATH, searching..."
-        
-        REM Try common locations for signtool
-        set "SIGNTOOL_PATH="
-        if exist "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" (
-          for /f "delims=" %%i in ('dir "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" /s /b 2^>nul ^| sort /r') do (
-            set "SIGNTOOL_PATH=%%i"
-            goto :found
-          )
-        )
-        if exist "C:\Program Files\Microsoft SDKs\Windows\*\bin\signtool.exe" (
-          for /f "delims=" %%i in ('dir "C:\Program Files\Microsoft SDKs\Windows\*\bin\signtool.exe" /s /b 2^>nul ^| sort /r') do (
-            set "SIGNTOOL_PATH=%%i"
-            goto :found
-          )
-        )
-        
-        :found
-        if "%SIGNTOOL_PATH%"=="" (
-          echo ERROR: signtool.exe not found
-          del cert.pfx cert_base64.txt 2>nul
-          exit /b 1
-        )
-        
-        echo Found signtool at: %SIGNTOOL_PATH%
+        echo Using signtool from: %SIGNTOOL_PATH%
         
         echo Signing executable...
         "%SIGNTOOL_PATH%" sign ^
