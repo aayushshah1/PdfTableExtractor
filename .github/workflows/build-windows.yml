@@ -56,26 +56,31 @@ jobs:
         # Install only the necessary components (signing tools)
         Start-Process -FilePath $installerPath -ArgumentList "/quiet", "/norestart", "/features", "OptionId.SigningTools" -Wait
         
-        # Verify installation
+        # Find signtool.exe
         $signtoolPaths = @(
           "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe",
           "${env:ProgramFiles}\Windows Kits\10\bin\*\x64\signtool.exe"
         )
         
+        $signtoolPath = $null
         foreach ($path in $signtoolPaths) {
           $found = Get-ChildItem -Path $path -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if ($found) {
-            Write-Host "Found signtool at: $($found.FullName)"
-            echo "SIGNTOOL_PATH=$($found.FullName)" >> $env:GITHUB_ENV
+            $signtoolPath = $found.FullName
+            Write-Host "Found signtool at: $signtoolPath"
             break
           }
         }
         
-        if (-not $env:SIGNTOOL_PATH) {
-          Write-Error "signtool.exe still not found after SDK installation"
+        if (-not $signtoolPath) {
+          Write-Error "signtool.exe not found after SDK installation"
           exit 1
         }
-    
+        
+        # Set environment variable for next step
+        Add-Content $env:GITHUB_ENV "SIGNTOOL_PATH=$signtoolPath"
+        Write-Host "SIGNTOOL_PATH set to: $signtoolPath"
+
     - name: Decode certificate and sign executable
       if: github.event_name != 'pull_request' && github.repository == 'aayushshah1/PdfTableExtractor'
       shell: cmd
@@ -194,3 +199,4 @@ jobs:
           Built from commit: ${{ github.sha }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
