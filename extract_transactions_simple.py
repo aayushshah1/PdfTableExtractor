@@ -272,9 +272,9 @@ def extract_transactions_simple(pdf_path, output_excel_path=None):
             # Add Portfolio_Value row after the last actual transaction row
             portfolio_value_row = last_transaction_row + 1
             
-            # Add Portfolio Value row with TODAY() in column 3 (Date)
+            # Add Portfolio Value row with TODAY() in column 4 (Date column is now D)
             worksheet.cell(row=portfolio_value_row, column=1, value="Portfolio_Value")
-            worksheet.cell(row=portfolio_value_row, column=3, value="=TODAY()")  # TODAY() in Date column (3)
+            worksheet.cell(row=portfolio_value_row, column=4, value="=TODAY()")  # TODAY() in Date column (4)
             
             # If portfolio data exists, add it below with a 1-row gap
             if portfolio_df is not None:
