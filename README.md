@@ -4,6 +4,38 @@ A tool for extracting transaction data tables from PDF files and converting them
 
 ![PDF Table Extractor Screenshot](images/screenshot.png)
 
+## Project Structure
+
+````markdown
+# PDF Table Extractor
+
+A tool for extracting transaction data tables from PDF files and converting them to Excel format with automatic portfolio summary generation.
+
+![PDF Table Extractor Screenshot](images/screenshot.png)
+
+## Project Structure
+
+```
+PdfTableExtractor/
+│
+├── images/                     # Folder for screenshots and images
+│   └── screenshot.png          # Screenshot of the application
+│
+├── pdf_table_extractor/        # Main package for PDF Table Extractor
+│   ├── __init__.py             # Package initialization file
+│   ├── pdf_to_excel_app.py     # Main application script
+│   ├── explore_pdf.py          # Script for exploring PDF structure
+│   └── extract_transactions_simple.py  # Simple transaction extraction logic
+│
+├── tests/                      # Unit tests for the application
+│   ├── __init__.py             # Package initialization file
+│   └── test_pdf_table_extractor.py  # Unit tests for pdf_table_extractor
+│
+├── .gitignore                  # Git ignore file
+├── README.md                   # This README file
+└── requirements.txt            # Python package dependencies
+```
+
 ## Overview
 
 This application was originally designed for extracting financial transaction data from Inventure Broking PDFs, but it can be configured for other similar PDF formats. It extracts tabular data with a focus on transaction details including:
@@ -130,3 +162,4 @@ python explore_pdf.py path/to/your/file.pdf
 - Built with pdfplumber for table extraction
 - Developed for extracting financial transaction data from broker statements
 - Special thanks to the open-source community for the excellent libraries that made this tool possible
+````

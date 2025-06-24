@@ -1,5 +1,4 @@
 name: Build Windows Executable
-
 on:
   push:
     branches: [ main ]
@@ -153,8 +152,8 @@ jobs:
         echo. >> dist\PDFTableExtractor\README.txt
         echo For more information, visit: https://github.com/aayushshah1/PdfTableExtractor >> dist\PDFTableExtractor\README.txt
         
-        echo Creating Zip file...
-        powershell -Command "Compress-Archive -Path 'dist\PDFTableExtractor\*' -DestinationPath 'dist\PDFTableExtractor.zip' -Force"
+        echo Creating clean Windows-compatible Zip file...
+        powershell -Command "Compress-Archive -Path 'dist\PDFTableExtractor\*' -DestinationPath 'dist\PDFTableExtractor.zip' -Force -CompressionLevel Optimal"
         if exist dist\PDFTableExtractor.zip (
           echo Zip file created successfully at dist\PDFTableExtractor.zip
         ) else (
@@ -169,7 +168,7 @@ jobs:
         path: dist/PDFTableExtractor.zip
         if-no-files-found: error
         retention-days: 90
-    
+        # Only create releases for tagged versions
     - name: Release
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
@@ -189,7 +188,7 @@ jobs:
           
           ### Security:
           - Digitally signed by Ask Automations
-          - Windows may show a security warning initially (normal for self-signed certificates)
+          - Windows may show a security warning initially (normal for self-igned certificates)
           
           ### Usage:
           1. Download and extract `PDFTableExtractor.zip`
